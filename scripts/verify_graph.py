@@ -84,7 +84,6 @@ def verify_graph() -> dict[str, Any]:
                 "MATCH (p:Product) WHERE NOT (p)-[:BELONGS_TO]->(:Category) "
                 "OR NOT (p)-[:MADE_BY]->(:Brand) OR NOT (p)-[:SOLD_ON]->(:Marketplace) "
                 "OR NOT (p)-[:HAS_FEATURE]->(:Feature) "
-                "OR NOT (p)-[:HAS_MARKET_METRIC]->(:MarketMetric) "
                 "RETURN count(p) AS count",
             )
             incomplete_products = _single_count(

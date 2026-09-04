@@ -1,7 +1,7 @@
-document_id,title,source
-doc_1,Synthetic preparation reference 1,synthetic
-doc_2,Synthetic preparation reference 2,synthetic
-doc_3,Synthetic preparation reference 3,synthetic
-doc_4,Synthetic preparation reference 4,synthetic
-doc_5,Synthetic preparation reference 5,synthetic
-doc_6,Synthetic preparation reference 6,synthetic
+document_id,title,name,source,issuer_type,validity_note
+doc_1,Synthetic preparation reference 1,Synthetic preparation reference 1,synthetic,synthetic_reference,Synthetic offline demonstration data; not an official document.
+doc_2,Synthetic preparation reference 2,Synthetic preparation reference 2,synthetic,synthetic_reference,Synthetic offline demonstration data; not an official document.
+doc_3,Synthetic preparation reference 3,Synthetic preparation reference 3,synthetic,synthetic_reference,Synthetic offline demonstration data; not an official document.
+doc_4,Synthetic preparation reference 4,Synthetic preparation reference 4,synthetic,synthetic_reference,Synthetic offline demonstration data; not an official document.
+doc_5,Synthetic preparation reference 5,Synthetic preparation reference 5,synthetic,synthetic_reference,Synthetic offline demonstration data; not an official document.
+doc_6,Synthetic preparation reference 6,Synthetic preparation reference 6,synthetic,synthetic_reference,Synthetic offline demonstration data; not an official document.

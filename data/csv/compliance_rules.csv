@@ -1,7 +1,7 @@
-rule_id,name,summary
-rule_electronics_accessories_1,Electronics Accessories preparation rule 1,Synthetic compliance preparation reference; not legal advice.
-rule_electronics_accessories_2,Electronics Accessories preparation rule 2,Synthetic compliance preparation reference; not legal advice.
-rule_children_toys_1,Children Toys preparation rule 1,Synthetic compliance preparation reference; not legal advice.
-rule_children_toys_2,Children Toys preparation rule 2,Synthetic compliance preparation reference; not legal advice.
-rule_home_goods_1,Home Goods preparation rule 1,Synthetic compliance preparation reference; not legal advice.
-rule_home_goods_2,Home Goods preparation rule 2,Synthetic compliance preparation reference; not legal advice.
+rule_id,name,scope,description,summary
+rule_electronics_accessories_1,Electronics Accessories preparation rule 1,Electronics Accessories,Synthetic compliance preparation reference; not legal advice.,Synthetic compliance preparation reference; not legal advice.
+rule_electronics_accessories_2,Electronics Accessories preparation rule 2,Electronics Accessories,Synthetic compliance preparation reference; not legal advice.,Synthetic compliance preparation reference; not legal advice.
+rule_children_toys_1,Children Toys preparation rule 1,Children Toys,Synthetic compliance preparation reference; not legal advice.,Synthetic compliance preparation reference; not legal advice.
+rule_children_toys_2,Children Toys preparation rule 2,Children Toys,Synthetic compliance preparation reference; not legal advice.,Synthetic compliance preparation reference; not legal advice.
+rule_home_goods_1,Home Goods preparation rule 1,Home Goods,Synthetic compliance preparation reference; not legal advice.,Synthetic compliance preparation reference; not legal advice.
+rule_home_goods_2,Home Goods preparation rule 2,Home Goods,Synthetic compliance preparation reference; not legal advice.,Synthetic compliance preparation reference; not legal advice.

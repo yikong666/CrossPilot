@@ -1,4 +1,4 @@
-category_id,name
-category_electronics_accessories,Electronics Accessories
-category_children_toys,Children Toys
-category_home_goods,Home Goods
+category_id,name,category_group
+category_electronics_accessories,Electronics Accessories,Consumer Electronics
+category_children_toys,Children Toys,Children Products
+category_home_goods,Home Goods,Home and Kitchen

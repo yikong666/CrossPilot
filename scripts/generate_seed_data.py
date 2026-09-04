@@ -24,9 +24,21 @@ def _write_csv(output_dir: Path, filename: str, rows: list[dict[str, Any]]) -> N
 
 def _categories() -> list[dict[str, str]]:
     return [
-        {"category_id": "category_electronics_accessories", "name": "Electronics Accessories"},
-        {"category_id": "category_children_toys", "name": "Children Toys"},
-        {"category_id": "category_home_goods", "name": "Home Goods"},
+        {
+            "category_id": "category_electronics_accessories",
+            "name": "Electronics Accessories",
+            "category_group": "Consumer Electronics",
+        },
+        {
+            "category_id": "category_children_toys",
+            "name": "Children Toys",
+            "category_group": "Children Products",
+        },
+        {
+            "category_id": "category_home_goods",
+            "name": "Home Goods",
+            "category_group": "Home and Kitchen",
+        },
     ]
 
 
@@ -94,6 +106,7 @@ def _products_and_relationships(
                 {
                     "product_id": product_id,
                     "name": f"{product_name} {number:02d}",
+                    "title_en": f"{product_name} {number:02d}",
                     "category_id": category_id,
                     "brand_id": details["brands"][(number - 1) % len(details["brands"])],
                     "marketplace_id": MARKETPLACE_ID,
@@ -108,9 +121,13 @@ def _products_and_relationships(
                 {
                     "metric_id": f"metric_{details['prefix'].lower()}_{number:03d}",
                     "product_id": product_id,
+                    "category_id": category_id,
                     "marketplace_id": MARKETPLACE_ID,
                     "monthly_search_volume": str(rng.randint(500, 25000)),
                     "estimated_monthly_sales": str(rng.randint(10, 1800)),
+                    "demand_level": ("high", "medium", "low")[number % 3],
+                    "period": "2026-09",
+                    "sample_size": str(rng.randint(200, 3000)),
                     "is_synthetic": "true",
                 }
             )
@@ -153,7 +170,7 @@ def generate_seed_data(output_dir: Path, manifest_path: Path | None = None) -> d
         for brand_id in details["brands"]
     ]
     features = [
-        {"feature_id": feature_id, "name": name}
+        {"feature_id": feature_id, "name": name, "value": name}
         for details in catalog.values()
         for feature_id, name in details["features"]
     ]
@@ -162,50 +179,68 @@ def generate_seed_data(output_dir: Path, manifest_path: Path | None = None) -> d
             "risk_id": "risk_battery",
             "name": "battery",
             "description": "Battery transport and labeling review",
+            "risk_level": "high",
         },
         {
             "risk_id": "risk_electrical",
             "name": "electrical",
             "description": "Electrical safety review",
+            "risk_level": "high",
         },
         {
             "risk_id": "risk_wireless",
             "name": "wireless",
             "description": "Wireless radio compliance review",
+            "risk_level": "medium",
         },
-        {"risk_id": "risk_age", "name": "age", "description": "Age grading review"},
+        {
+            "risk_id": "risk_age",
+            "name": "age",
+            "description": "Age grading review",
+            "risk_level": "high",
+        },
         {
             "risk_id": "risk_toy_material",
             "name": "material",
             "description": "Toy material safety review",
+            "risk_level": "high",
         },
         {
             "risk_id": "risk_small_parts",
             "name": "small_parts",
             "description": "Small parts hazard review",
+            "risk_level": "high",
         },
         {
             "risk_id": "risk_home_material",
             "name": "material",
             "description": "Home material review",
+            "risk_level": "medium",
         },
         {
             "risk_id": "risk_load_bearing",
             "name": "load_bearing",
             "description": "Load bearing review",
+            "risk_level": "medium",
         },
         {
             "risk_id": "risk_food_contact",
             "name": "food_contact",
             "description": "Food contact material review",
+            "risk_level": "high",
         },
     ]
     fee_rules = [
         {
             "fee_rule_id": f"fee_{category['category_id'].removeprefix('category_')}",
             "category_id": category["category_id"],
+            "fee_id": f"fee_{category['category_id'].removeprefix('category_')}",
             "referral_rate": "0.15",
+            "referral_fee_rate": "0.15",
+            "commission_rate": "0.15",
             "fulfillment_fee": "4.95",
+            "fba_fee": "4.95",
+            "effective_date": "2026-01-01",
         }
         for category in categories
     ]
@@ -213,6 +248,8 @@ def generate_seed_data(output_dir: Path, manifest_path: Path | None = None) -> d
         {
             "rule_id": f"rule_{category['category_id'].removeprefix('category_')}_{index}",
             "name": f"{category['name']} preparation rule {index}",
+            "scope": category["name"],
+            "description": "Synthetic compliance preparation reference; not legal advice.",
             "summary": "Synthetic compliance preparation reference; not legal advice.",
         }
         for category in categories
@@ -222,7 +259,10 @@ def generate_seed_data(output_dir: Path, manifest_path: Path | None = None) -> d
         {
             "document_id": f"doc_{index}",
             "title": f"Synthetic preparation reference {index}",
+            "name": f"Synthetic preparation reference {index}",
             "source": "synthetic",
+            "issuer_type": "synthetic_reference",
+            "validity_note": "Synthetic offline demonstration data; not an official document.",
         }
         for index in range(1, len(compliance_rules) + 1)
     ]

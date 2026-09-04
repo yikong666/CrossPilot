@@ -58,6 +58,13 @@ def test_generate_seed_data_creates_deterministic_complete_synthetic_dataset(
     }
 
     products = read_csv(first_output / "products.csv")
+    categories = read_csv(first_output / "categories.csv")
+    features = read_csv(first_output / "features.csv")
+    market_metrics = read_csv(first_output / "market_metrics.csv")
+    fee_rules = read_csv(first_output / "fee_rules.csv")
+    risk_attributes = read_csv(first_output / "risk_attributes.csv")
+    compliance_rules = read_csv(first_output / "compliance_rules.csv")
+    documents = read_csv(first_output / "documents.csv")
     assert 90 <= len(products) <= 120
     assert {product["is_synthetic"] for product in products} == {"true"}
     assert {product["category_id"] for product in products} == {
@@ -66,6 +73,26 @@ def test_generate_seed_data_creates_deterministic_complete_synthetic_dataset(
         "category_home_goods",
     }
     assert all(product["price"] and product["rating"] and product["bsr"] for product in products)
+    assert all(category["category_group"] for category in categories)
+    assert all(product["title_en"] for product in products)
+    assert all(feature["value"] for feature in features)
+    assert all(
+        metric["category_id"]
+        and metric["demand_level"]
+        and metric["period"]
+        and metric["sample_size"]
+        for metric in market_metrics
+    )
+    assert all(
+        rule["fee_id"] and rule["commission_rate"] and rule["fba_fee"] and rule["effective_date"]
+        for rule in fee_rules
+    )
+    assert all(risk["risk_level"] for risk in risk_attributes)
+    assert all(rule["scope"] and rule["description"] for rule in compliance_rules)
+    assert all(
+        document["name"] and document["issuer_type"] and document["validity_note"]
+        for document in documents
+    )
     trigger_pairs = {
         (row["risk_id"], row["rule_id"]) for row in read_csv(first_output / "product_risks.csv")
     }
@@ -188,7 +215,12 @@ def test_seed_relationship_specs_preserve_prd_directionality() -> None:
     endpoint_pairs = {spec[2]: (spec[0], spec[3]) for _, spec in RELATIONSHIP_SPECS}
 
     assert endpoint_pairs == {
+        "BELONGS_TO": ("Product", "Category"),
+        "MADE_BY": ("Product", "Brand"),
+        "SOLD_ON": ("Product", "Marketplace"),
         "HAS_FEATURE": ("Product", "Feature"),
+        "HAS_MARKET_METRIC": ("Category", "MarketMetric"),
+        "USES_FEE_RULE": ("Category", "FeeRule"),
         "HAS_RISK_ATTRIBUTE": ("Product", "RiskAttribute"),
         "TRIGGERS": ("RiskAttribute", "ComplianceRule"),
         "REQUIRES_DOCUMENT": ("ComplianceRule", "Document"),
@@ -197,35 +229,76 @@ def test_seed_relationship_specs_preserve_prd_directionality() -> None:
     }
 
 
+def test_marketplace_seed_row_includes_prd_properties() -> None:
+    """Omitting platform or currency would make marketplace facts incomplete in Neo4j."""
+    from scripts.seed_graph import MARKETPLACE_ROW
+
+    assert MARKETPLACE_ROW == {
+        "marketplace_id": "marketplace_amazon_us",
+        "name": "Amazon US",
+        "country": "US",
+        "platform": "Amazon",
+        "currency": "USD",
+    }
+
+
+def test_neo4j_availability_only_classifies_explicit_connectivity_errors() -> None:
+    """Catching authentication or configuration errors as unavailable would hide real failures."""
+    from neo4j.exceptions import ServiceUnavailable
+
+    from scripts.seed_graph import is_neo4j_connection_unavailable
+
+    assert is_neo4j_connection_unavailable(ServiceUnavailable("offline")) is True
+    assert is_neo4j_connection_unavailable(ValueError("invalid configuration")) is False
+
+
 @pytest.mark.parametrize("script_name", ["seed_graph.py", "verify_graph.py"])
 def test_graph_scripts_run_from_repository_root_without_module_path_errors(
     script_name: str,
 ) -> None:
-    """Removing root path bootstrapping would make direct script execution lose the app package."""
+    """Removing root path bootstrapping would make standalone script initialization lose app."""
     environment = {
         **os.environ,
         "LLM_BASE_URL": "http://localhost:9999",
         "LLM_API_KEY": "test-key",
         "LLM_MODEL": "test-model",
-        "NEO4J_URI": "invalid-uri",
+        "NEO4J_URI": "bolt://localhost:7687",
         "NEO4J_USER": "neo4j",
         "NEO4J_PASSWORD": "test-password",
     }
+    bootstrap = (
+        "import runpy, sys; from pathlib import Path; "
+        "root = str(Path.cwd()); "
+        "sys.path[:] = [entry for entry in sys.path if entry not in ('', root)]; "
+        f"runpy.run_path('scripts/{script_name}', run_name='script_import')"
+    )
     completed = subprocess.run(
-        [sys.executable, f"scripts/{script_name}"],
+        [sys.executable, "-c", bootstrap],
         cwd=Path.cwd(),
         env=environment,
         capture_output=True,
         text=True,
-        timeout=15,
+        timeout=60,
         check=False,
     )
 
-    assert "No module named 'app'" not in completed.stderr
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_seed_script_is_idempotent_against_a_real_neo4j_instance() -> None:
     """A non-MERGE seed implementation must create duplicates and fail this integration test."""
+    required_settings = (
+        "LLM_BASE_URL",
+        "LLM_API_KEY",
+        "LLM_MODEL",
+        "NEO4J_URI",
+        "NEO4J_USER",
+        "NEO4J_PASSWORD",
+    )
+    missing_settings = [setting for setting in required_settings if not os.environ.get(setting)]
+    if missing_settings:
+        pytest.skip("Neo4j integration settings are unavailable; no mock substitute is used.")
+
     pytest.importorskip("neo4j")
     from scripts.seed_graph import neo4j_is_available, seed_graph
     from scripts.verify_graph import verify_graph

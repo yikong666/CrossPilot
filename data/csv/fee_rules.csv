@@ -1,4 +1,4 @@
-fee_rule_id,category_id,referral_rate,fulfillment_fee
-fee_electronics_accessories,category_electronics_accessories,0.15,4.95
-fee_children_toys,category_children_toys,0.15,4.95
-fee_home_goods,category_home_goods,0.15,4.95
+fee_rule_id,category_id,fee_id,referral_rate,referral_fee_rate,commission_rate,fulfillment_fee,fba_fee,effective_date
+fee_electronics_accessories,category_electronics_accessories,fee_electronics_accessories,0.15,0.15,0.15,4.95,4.95,2026-01-01
+fee_children_toys,category_children_toys,fee_children_toys,0.15,0.15,0.15,4.95,4.95,2026-01-01
+fee_home_goods,category_home_goods,fee_home_goods,0.15,0.15,0.15,4.95,4.95,2026-01-01

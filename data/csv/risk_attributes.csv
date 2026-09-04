@@ -1,10 +1,10 @@
-risk_id,name,description
-risk_battery,battery,Battery transport and labeling review
-risk_electrical,electrical,Electrical safety review
-risk_wireless,wireless,Wireless radio compliance review
-risk_age,age,Age grading review
-risk_toy_material,material,Toy material safety review
-risk_small_parts,small_parts,Small parts hazard review
-risk_home_material,material,Home material review
-risk_load_bearing,load_bearing,Load bearing review
-risk_food_contact,food_contact,Food contact material review
+risk_id,name,description,risk_level
+risk_battery,battery,Battery transport and labeling review,high
+risk_electrical,electrical,Electrical safety review,high
+risk_wireless,wireless,Wireless radio compliance review,medium
+risk_age,age,Age grading review,high
+risk_toy_material,material,Toy material safety review,high
+risk_small_parts,small_parts,Small parts hazard review,high
+risk_home_material,material,Home material review,medium
+risk_load_bearing,load_bearing,Load bearing review,medium
+risk_food_contact,food_contact,Food contact material review,high
