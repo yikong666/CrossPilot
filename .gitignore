@@ -221,6 +221,7 @@ __marimo__/
 !.env.example
 logs/
 .superpowers/
+.worktrees/
 .uv-cache/
 .pytest-tmp/
 tmp/
