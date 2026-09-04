@@ -45,7 +45,8 @@ async def test_reads_one_matching_us_amazon_rule_with_parameterized_query() -> N
     assert rule.fba_fee_usd == Decimal("4.00")
     assert rule.fx_cny_per_usd == Decimal("7.00")
     assert rule.effective_date == date(2026, 9, 1)
-    assert client.params == {"category": "consumer_electronics", "weight_kg": Decimal("0.42")}
+    assert client.params == {"category": "consumer_electronics", "weight_kg": 0.42}
+    assert isinstance(client.params["weight_kg"], float)
     assert client.cypher is not None
     assert "amazon_us" in client.cypher
     assert "$category" in client.cypher

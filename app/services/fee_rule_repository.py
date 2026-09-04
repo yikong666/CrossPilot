@@ -98,7 +98,7 @@ class FeeRuleRepository:
     async def get_rule(self, category: str, weight_kg: Decimal) -> FeeRule:
         rows = await self._read_client.execute_read(
             FEE_RULE_CYPHER,
-            {"category": category, "weight_kg": weight_kg},
+            {"category": category, "weight_kg": float(weight_kg)},
         )
         if not rows:
             raise FeeRuleNotFoundError(
