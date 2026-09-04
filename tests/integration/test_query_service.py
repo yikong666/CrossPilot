@@ -160,7 +160,8 @@ async def test_invalid_cypher_is_never_explained_or_executed_then_repairs_to_evi
     evidence = await service.query("分析市场", entity_hint="Example", purpose="market")
 
     assert len(generator.calls) == 2
-    assert "Unknown label: Customer" in generator.calls[1]["feedback"]
+    assert "static_validation_failed" in generator.calls[1]["feedback"]
+    assert "Unknown label: Customer" not in generator.calls[1]["feedback"]
     assert len(graph.explained) == 1
     assert len([call for call in graph.executed if "vector.queryNodes" not in call[0]]) == 1
     assert len(evidence.rows) == 50
@@ -307,15 +308,40 @@ async def test_evidence_uses_projection_allowlist_and_hard_subgraph_limits() -> 
     assert "truncated" in evidence.summary
 
 
-class ExplainFailureGraphClient(FakeGraphClient):
+class DatabaseFailureGraphClient(FakeGraphClient):
+    def __init__(self, failure_stage: str) -> None:
+        super().__init__()
+        self.failure_stage = failure_stage
+
     async def explain(self, cypher: str, params: Mapping[str, Any]) -> None:
         self.explained.append((cypher, dict(params)))
-        raise RuntimeError("internal bolt endpoint and secret")
+        if self.failure_stage == "explain":
+            raise RuntimeError(
+                "bolt://neo4j.internal:7687 password=hunter2 token=abc123"
+            )
+
+    async def execute_read(
+        self, cypher: str, params: Mapping[str, Any]
+    ) -> list[dict[str, Any]]:
+        if self.failure_stage == "execution":
+            self.executed.append((cypher, dict(params)))
+            raise RuntimeError(
+                "bolt://neo4j.internal:7687 password=hunter2 token=abc123"
+            )
+        return await super().execute_read(cypher, params)
 
 
+@pytest.mark.parametrize(
+    ("failure_stage", "safe_code"),
+    [("explain", "explain_failed"), ("execution", "query_failed")],
+)
 @pytest.mark.asyncio
-async def test_database_details_are_internal_but_user_error_is_stable() -> None:
-    graph = ExplainFailureGraphClient()
+async def test_database_errors_never_escape_to_llm_public_exception_or_logs(
+    failure_stage: str,
+    safe_code: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    graph = DatabaseFailureGraphClient(failure_stage)
     valid = GeneratedCypher(
         cypher="MATCH (p:Product) RETURN p.name AS name LIMIT 1",
         params={},
@@ -324,12 +350,28 @@ async def test_database_details_are_internal_but_user_error_is_stable() -> None:
     generator = SequenceGenerator([valid, valid, valid])
     service = make_service(graph, generator)
 
-    with pytest.raises(GraphQueryExecutionError) as captured:
-        await service.query("分析市场", entity_hint=None, purpose="market")
+    with caplog.at_level("WARNING", logger="app.graph.query_service"):
+        with pytest.raises(GraphQueryExecutionError) as captured:
+            await service.query("分析市场", entity_hint=None, purpose="market")
 
     assert str(captured.value) == "Graph query could not be completed safely"
     assert len(captured.value.failures) == 3
-    assert "internal bolt endpoint and secret" in captured.value.failures[-1].detail
+    assert all(failure.code == safe_code for failure in captured.value.failures)
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+    public_exception = (
+        f"{captured.value!s} {captured.value!r} "
+        f"{captured.value.failures!r} {vars(captured.value)!r}"
+    )
+    retry_feedback = " ".join(
+        str(call["feedback"]) for call in generator.calls[1:]
+    )
+    assert safe_code in retry_feedback
+    assert safe_code in caplog.text
+    for sensitive in ("neo4j.internal", "hunter2", "abc123", "password", "token"):
+        assert sensitive not in public_exception.lower()
+        assert sensitive not in retry_feedback.lower()
+        assert sensitive not in caplog.text.lower()
 
 
 @pytest.mark.asyncio

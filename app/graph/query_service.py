@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -7,11 +8,22 @@ from decimal import Decimal
 from typing import Any, Protocol
 
 from app.contracts.graph import EvidenceRecord
-from app.core.errors import GraphQueryError, StructuredOutputError
+from app.core.errors import GraphQueryError
 from app.graph.cypher_generator import GeneratedCypher
 from app.graph.cypher_validator import CypherValidator
 from app.graph.entity_resolver import EntityMatch, EntityResolver
 from app.graph.schema_registry import SchemaRegistry
+
+logger = logging.getLogger(__name__)
+
+_FAILURE_CODES = {
+    "entity_resolution": "entity_resolution_failed",
+    "generation": "generation_failed",
+    "purpose_validation": "purpose_validation_failed",
+    "static_validation": "static_validation_failed",
+    "explain": "explain_failed",
+    "execution": "query_failed",
+}
 
 
 class QueryGraphClient(Protocol):
@@ -36,8 +48,7 @@ class QueryGenerator(Protocol):
 class QueryAttemptFailure:
     attempt: int
     stage: str
-    error_type: str
-    detail: str
+    code: str
 
 
 class GraphQueryExecutionError(GraphQueryError):
@@ -73,19 +84,20 @@ class GraphQueryService:
         entity_hint: str | None,
         purpose: str,
     ) -> EvidenceRecord:
+        resolution_failure: QueryAttemptFailure | None = None
         try:
             entity_matches = await self._resolve(entity_hint)
-        except GraphQueryError:
-            raise
-        except Exception as exc:
-            failure = QueryAttemptFailure(0, "entity_resolution", type(exc).__name__, str(exc))
-            raise GraphQueryExecutionError([failure]) from exc
+        except Exception:
+            resolution_failure = _safe_failure(0, "entity_resolution")
+            entity_matches = []
+        if resolution_failure is not None:
+            raise GraphQueryExecutionError([resolution_failure])
         if entity_matches and entity_matches[0].needs_confirmation:
             raise GraphQueryError("Entity confirmation is required before graph query")
         feedback: str | None = None
         failures: list[QueryAttemptFailure] = []
-        last_error: Exception | None = None
         for attempt in range(1, self.max_attempts + 1):
+            generation_failure: QueryAttemptFailure | None = None
             try:
                 generated = await self.generator.generate(
                     question,
@@ -93,9 +105,10 @@ class GraphQueryService:
                     purpose,
                     feedback,
                 )
-            except StructuredOutputError as exc:
-                failure = QueryAttemptFailure(attempt, "generation", type(exc).__name__, str(exc))
-                raise GraphQueryExecutionError([failure]) from exc
+            except Exception:
+                generation_failure = _safe_failure(attempt, "generation")
+            if generation_failure is not None:
+                raise GraphQueryExecutionError([generation_failure])
             stage = "purpose_validation"
             try:
                 if generated.purpose != purpose:
@@ -108,12 +121,13 @@ class GraphQueryService:
                 await self.client.explain(generated.cypher, generated.params)
                 stage = "execution"
                 rows = await self.client.execute_read(generated.cypher, generated.params)
-            except Exception as exc:
-                last_error = exc
-                failures.append(
-                    QueryAttemptFailure(attempt, stage, type(exc).__name__, str(exc))
+            except Exception:
+                failure = _safe_failure(attempt, stage)
+                failures.append(failure)
+                feedback = (
+                    f"{failure.code}. Generate a corrected query using only this schema: "
+                    f"{self.schema.compact_text()}"
                 )
-                feedback = f"{type(exc).__name__}: {exc}. Schema: {self.schema.compact_text()}"
                 continue
             clean_rows, node_ids, relationship_ids, truncated = _sanitize_rows(
                 rows,
@@ -134,10 +148,7 @@ class GraphQueryService:
                 graph_node_ids=node_ids,
                 graph_edge_ids=relationship_ids,
             )
-        error = GraphQueryExecutionError(failures)
-        if last_error is not None:
-            raise error from last_error
-        raise error
+        raise GraphQueryExecutionError(failures)
 
     async def _resolve(self, entity_hint: str | None) -> list[EntityMatch]:
         if not entity_hint or self.entity_resolver is None:
@@ -147,6 +158,17 @@ class GraphQueryService:
             ["Product", "Category", "Brand"],
             top_k=5,
         )
+
+
+def _safe_failure(attempt: int, stage: str) -> QueryAttemptFailure:
+    code = _FAILURE_CODES[stage]
+    logger.warning(
+        "graph_query_failure attempt=%d stage=%s code=%s",
+        attempt,
+        stage,
+        code,
+    )
+    return QueryAttemptFailure(attempt=attempt, stage=stage, code=code)
 
 
 def _sanitize_rows(
