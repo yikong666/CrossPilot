@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -93,6 +94,7 @@ def load_csv_rows(path: Path) -> list[dict[str, Any]]:
         "min_weight_kg",
         "max_weight_kg",
     }
+    date_fields = {"effective_date"}
     rows: list[dict[str, Any]] = []
     with path.open(newline="", encoding="utf-8") as file:
         for raw_row in csv.DictReader(file):
@@ -102,6 +104,8 @@ def load_csv_rows(path: Path) -> list[dict[str, Any]]:
                     row[key] = int(value)
                 elif key in float_fields:
                     row[key] = float(value)
+                elif key in date_fields:
+                    row[key] = date.fromisoformat(value)
                 elif key == "is_synthetic":
                     row[key] = value.lower() == "true"
                 else:
