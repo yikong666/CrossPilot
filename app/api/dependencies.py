@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -8,6 +9,8 @@ import httpx
 from fastapi import Request
 
 from app.workflow.runtime import UnavailableWorkflowRuntime, WorkflowRuntime
+
+logger = logging.getLogger(__name__)
 
 
 class Neo4jClient(Protocol):
@@ -34,17 +37,20 @@ class AppDependencies:
             self.http_client = httpx.AsyncClient()
 
     async def shutdown(self) -> None:
-        if self.neo4j_client is not None:
-            await self.neo4j_client.close()
-        if self.http_client is not None:
-            await self.http_client.aclose()
+        try:
+            if self.neo4j_client is not None:
+                await self.neo4j_client.close()
+        finally:
+            if self.http_client is not None:
+                await self.http_client.aclose()
 
     async def neo4j_status(self) -> str:
         if self.neo4j_client is None:
             return "unavailable"
         try:
             connected = await self.neo4j_client.verify_connectivity()
-        except Exception:
+        except Exception as exc:
+            logger.warning("Neo4j health check failed (%s)", type(exc).__name__)
             return "unavailable"
         return "ok" if connected is not False else "unavailable"
 

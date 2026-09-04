@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, cast
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.api.dependencies import AppDependencies
+from app.api.routes_analysis import _encode_events
 from app.contracts.api import AnalysisRequest
 from app.contracts.events import SSEEvent
 from app.main import create_app
+from app.workflow.runtime import RuntimeUnavailableError
 
 
 class FakeClosable:
@@ -26,6 +30,16 @@ class FakeNeo4j(FakeClosable):
 
     async def verify_connectivity(self) -> bool:
         return True
+
+
+class FailingCloseNeo4j(FakeNeo4j):
+    async def close(self) -> None:
+        raise RuntimeError("close failed")
+
+
+class FailingHealthNeo4j(FakeNeo4j):
+    async def verify_connectivity(self) -> bool:
+        raise RuntimeError("neo4j_password=not-for-logs")
 
 
 class FakeRuntime:
@@ -76,6 +90,27 @@ class FakeRuntime:
             message=message,
             timestamp="2026-09-04T16:00:00+08:00",
         )
+
+
+class SensitiveUnavailableRuntime(FakeRuntime):
+    def stream(
+        self,
+        request: AnalysisRequest,
+        *,
+        trace_id: str,
+        thread_id: str,
+    ) -> AsyncIterator[SSEEvent]:
+        raise RuntimeUnavailableError("llm_api_key=not-for-clients")
+
+
+class IncompleteGraphRuntime(FakeRuntime):
+    async def get_graph(self, thread_id: str) -> dict[str, list[dict[str, str]]] | None:
+        return {"nodes": []}
+
+
+class DisconnectingRequest:
+    async def is_disconnected(self) -> bool:
+        return True
 
 
 def valid_request() -> dict[str, object]:
@@ -189,6 +224,86 @@ def test_stream_returns_actionable_error_when_runtime_is_not_configured() -> Non
 
     assert response.status_code == 503
     assert response.json()["detail"] == (
-        "Analysis runtime is not configured. "
-        "Configure the workflow runtime before starting analysis."
+        "Analysis service is unavailable. Configure the workflow runtime and retry."
     )
+
+
+def test_shutdown_closes_http_client_even_when_neo4j_close_raises() -> None:
+    http_client = FakeClosable()
+    app = create_app(
+        dependencies=AppDependencies(
+            runtime=FakeRuntime(),
+            neo4j_client=FailingCloseNeo4j(),
+            http_client=http_client,
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="close failed"):
+        with TestClient(app) as client:
+            client.get("/health")
+
+    assert http_client.closed is True
+
+
+def test_runtime_unavailable_error_returns_fixed_safe_detail() -> None:
+    app = create_app(dependencies=AppDependencies(runtime=SensitiveUnavailableRuntime()))
+
+    with TestClient(app) as client:
+        response = client.post("/api/v1/analysis/stream", json=valid_request())
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == (
+        "Analysis service is unavailable. Configure the workflow runtime and retry."
+    )
+    assert "not-for-clients" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_disconnect_closes_the_runtime_event_iterator() -> None:
+    closed = False
+
+    async def events() -> AsyncIterator[SSEEvent]:
+        nonlocal closed
+        try:
+            yield FakeRuntime._event("trace-1", "thread-1", "workflow_started", "Started")
+        finally:
+            closed = True
+
+    chunks = [
+        chunk
+        async for chunk in _encode_events(
+            cast(Any, DisconnectingRequest()),
+            events(),
+            trace_id="trace-1",
+            thread_id="thread-1",
+        )
+    ]
+
+    assert chunks == []
+    assert closed is True
+
+
+def test_graph_rejects_runtime_data_without_edges() -> None:
+    app = create_app(dependencies=AppDependencies(runtime=IncompleteGraphRuntime()))
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/api/v1/analysis/known-thread/graph")
+
+    assert response.status_code == 500
+
+
+def test_health_logs_redacted_connectivity_failure(caplog: pytest.LogCaptureFixture) -> None:
+    app = create_app(
+        dependencies=AppDependencies(
+            runtime=FakeRuntime(),
+            neo4j_client=FailingHealthNeo4j(),
+        )
+    )
+    caplog.set_level(logging.WARNING, logger="app.api.dependencies")
+
+    with TestClient(app) as client:
+        response = client.get("/health")
+
+    assert response.json()["neo4j"] == "unavailable"
+    assert "Neo4j health check failed (RuntimeError)" in caplog.text
+    assert "not-for-logs" not in caplog.text

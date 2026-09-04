@@ -13,7 +13,7 @@ from app.api.dependencies import AppDependencies, get_dependencies
 from app.api.sse import SSEEncoder
 from app.contracts.api import AnalysisRequest
 from app.contracts.events import SSEEvent
-from app.workflow.runtime import RuntimeUnavailableError
+from app.workflow.runtime import RUNTIME_UNAVAILABLE_DETAIL, RuntimeUnavailableError
 
 router = APIRouter(prefix="/api/v1/analysis", tags=["analysis"])
 Dependencies = Annotated[AppDependencies, Depends(get_dependencies)]
@@ -93,7 +93,7 @@ async def stream_analysis(
             thread_id=thread_id,
         )
     except RuntimeUnavailableError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail=RUNTIME_UNAVAILABLE_DETAIL) from exc
     return _sse_response(request, events, trace_id=trace_id, thread_id=thread_id)
 
 
@@ -112,5 +112,5 @@ async def resume_analysis(
             trace_id=trace_id,
         )
     except RuntimeUnavailableError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail=RUNTIME_UNAVAILABLE_DETAIL) from exc
     return _sse_response(request, events, trace_id=trace_id, thread_id=thread_id)

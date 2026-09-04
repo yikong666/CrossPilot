@@ -7,6 +7,9 @@ from app.contracts.api import AnalysisRequest
 from app.contracts.events import SSEEvent
 
 GraphData = dict[str, list[dict[str, Any]]]
+RUNTIME_UNAVAILABLE_DETAIL = (
+    "Analysis service is unavailable. Configure the workflow runtime and retry."
+)
 
 
 class RuntimeUnavailableError(RuntimeError):
