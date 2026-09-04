@@ -47,7 +47,7 @@ class PricingResult(BaseModel):
 
     purchase_cost_usd: Decimal = Field(gt=0)
     fixed_cost: Decimal = Field(gt=0)
-    variable_rate: Decimal = Field(ge=0)
+    variable_rate: Decimal = Field(ge=0, lt=1)
     profit: Decimal | None = None
     margin: Decimal | None = None
     break_even_price: Decimal = Field(gt=0)
@@ -116,13 +116,17 @@ def calculate_pricing(product: ProductInput, fee_rule: FeeRule | None) -> Pricin
 
     purchase_cost_usd = product.purchase_cost_cny / fx
     fixed_cost = purchase_cost_usd + product.inbound_shipping_usd + fba_fee
-    variable_rate = commission_rate + product.ad_rate + product.return_loss_rate
+    normalized_commission_rate = _rate(commission_rate)
+    normalized_ad_rate = _rate(product.ad_rate)
+    normalized_return_loss_rate = _rate(product.return_loss_rate)
+    normalized_target_margin = _rate(product.target_margin)
+    variable_rate = normalized_commission_rate + normalized_ad_rate + normalized_return_loss_rate
     break_even_denominator = Decimal("1") - variable_rate
     if break_even_denominator <= 0:
         raise InvalidPricingFormulaError(
             "Cannot calculate break-even price: denominator must be positive."
         )
-    target_denominator = break_even_denominator - product.target_margin
+    target_denominator = break_even_denominator - normalized_target_margin
     if target_denominator <= 0:
         raise InvalidPricingFormulaError(
             "Cannot calculate target price: denominator must be positive."
@@ -149,10 +153,10 @@ def calculate_pricing(product: ProductInput, fee_rule: FeeRule | None) -> Pricin
             "inbound_shipping_usd": product.inbound_shipping_usd,
             "fba_fee_usd": fba_fee,
             "fba_fee_source": fba_source or "fee_rule",
-            "commission_rate": commission_rate,
+            "commission_rate": normalized_commission_rate,
             "commission_source": commission_source or "fee_rule",
-            "ad_rate": product.ad_rate,
-            "return_loss_rate": product.return_loss_rate,
-            "target_margin": product.target_margin,
+            "ad_rate": normalized_ad_rate,
+            "return_loss_rate": normalized_return_loss_rate,
+            "target_margin": normalized_target_margin,
         },
     )

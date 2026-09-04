@@ -160,6 +160,20 @@ def test_rejects_rate_that_quantizes_to_one() -> None:
         fee_rule(commission_rate="0.99999")
 
 
+@pytest.mark.parametrize("rate_field", ["commission_rate", "ad_rate", "return_loss_rate"])
+def test_rejects_user_rate_that_quantizes_to_one_before_formula(rate_field: str) -> None:
+    """Fails if a user-priority rate is checked before, but displayed after, normalization."""
+    rates: dict[str, object] = {
+        "commission_rate": "0",
+        "ad_rate": "0",
+        "return_loss_rate": "0",
+    }
+    rates[rate_field] = "0.99999"
+
+    with pytest.raises(InvalidPricingFormulaError, match="break-even"):
+        calculate_pricing(product(target_margin="0", **rates), fee_rule())
+
+
 def test_rejects_calculation_when_rounding_makes_required_price_zero() -> None:
     """Fails if a positive sub-cent price escapes the result model as $0.00."""
     with pytest.raises(ValidationError):
