@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Protocol
 
@@ -22,6 +23,16 @@ def _rate(value: Decimal) -> Decimal:
     return value.quantize(_RATE, rounding=ROUND_HALF_UP)
 
 
+def _decimal(value: Decimal | str | int | float) -> Decimal:
+    return value if isinstance(value, Decimal) else Decimal(str(value))
+
+
+def _effective_date(value: Any) -> date:
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value))
+
+
 class AsyncReadClient(Protocol):
     """Minimal graph dependency required by the fee-rule repository."""
 
@@ -36,21 +47,22 @@ class FeeRule(BaseModel):
     fba_fee_usd: Decimal = Field(ge=0)
     fx_cny_per_usd: Decimal = Field(gt=0)
     fee_id: str | None = None
+    effective_date: date | None = None
 
-    @field_validator("commission_rate")
+    @field_validator("commission_rate", mode="before")
     @classmethod
-    def round_commission_rate(cls, value: Decimal) -> Decimal:
-        return _rate(value)
+    def round_commission_rate(cls, value: Decimal | str | int | float) -> Decimal:
+        return _rate(_decimal(value))
 
-    @field_validator("fba_fee_usd")
+    @field_validator("fba_fee_usd", mode="before")
     @classmethod
-    def round_fba_fee(cls, value: Decimal) -> Decimal:
-        return _money(value)
+    def round_fba_fee(cls, value: Decimal | str | int | float) -> Decimal:
+        return _money(_decimal(value))
 
-    @field_validator("fx_cny_per_usd")
+    @field_validator("fx_cny_per_usd", mode="before")
     @classmethod
-    def round_exchange_rate(cls, value: Decimal) -> Decimal:
-        return _rate(value)
+    def round_exchange_rate(cls, value: Decimal | str | int | float) -> Decimal:
+        return _rate(_decimal(value))
 
 
 class FeeRuleNotFoundError(CrossPilotError):
@@ -70,7 +82,8 @@ WHERE rule.marketplace = 'amazon_us'
 RETURN rule.fee_id AS fee_id,
        rule.commission_rate AS commission_rate,
        rule.fba_fee_usd AS fba_fee_usd,
-       rule.fx_cny_per_usd AS fx_cny_per_usd
+       rule.fx_cny_per_usd AS fx_cny_per_usd,
+       rule.effective_date AS effective_date
 ORDER BY rule.effective_date DESC
 LIMIT 2
 """.strip()
@@ -92,16 +105,19 @@ class FeeRuleRepository:
                 "No applicable Amazon US fee rule was found.",
                 ("commission_rate", "fba_fee_usd", "fx_cny_per_usd"),
             )
-        if len(rows) != 1:
-            raise FeeRuleNotFoundError(
-                "Multiple applicable Amazon US fee rules were found.",
-                ("commission_rate", "fba_fee_usd", "fx_cny_per_usd"),
-            )
         row = rows[0]
-        required_fields = ("commission_rate", "fba_fee_usd", "fx_cny_per_usd")
+        required_fields = ("commission_rate", "fba_fee_usd", "fx_cny_per_usd", "effective_date")
         missing_fields = tuple(field for field in required_fields if row.get(field) is None)
         if missing_fields:
             raise FeeRuleNotFoundError(
                 "The applicable Amazon US fee rule is incomplete.", missing_fields
             )
-        return FeeRule.model_validate(dict(row))
+        selected_date = _effective_date(row["effective_date"])
+        if len(rows) > 1 and rows[1].get("effective_date") is not None:
+            second_date = _effective_date(rows[1]["effective_date"])
+            if second_date == selected_date:
+                raise FeeRuleNotFoundError(
+                    "Multiple Amazon US fee rules share the same effective date.",
+                    ("commission_rate", "fba_fee_usd", "fx_cny_per_usd"),
+                )
+        return FeeRule.model_validate({**dict(row), "effective_date": selected_date})

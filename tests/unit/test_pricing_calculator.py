@@ -8,6 +8,7 @@ from app.services.fee_rule_repository import FeeRule
 from app.services.pricing_calculator import (
     InvalidPricingFormulaError,
     MissingPricingFieldsError,
+    PricingResult,
     calculate_pricing,
 )
 
@@ -151,6 +152,44 @@ def test_rounds_money_half_up_and_rates_to_four_places() -> None:
     assert result.variable_rate == Decimal("0.3333")
     assert result.profit == Decimal("-0.33")
     assert result.margin == Decimal("-0.3333")
+
+
+def test_rejects_rate_that_quantizes_to_one() -> None:
+    """Fails if rate normalization can turn a legal input into an illegal stored rate."""
+    with pytest.raises(ValidationError):
+        fee_rule(commission_rate="0.99999")
+
+
+def test_rejects_calculation_when_rounding_makes_required_price_zero() -> None:
+    """Fails if a positive sub-cent price escapes the result model as $0.00."""
+    with pytest.raises(ValidationError):
+        calculate_pricing(
+            product(
+                purchase_cost_cny="0.004",
+                fx_cny_per_usd="1",
+                inbound_shipping_usd="0",
+                fba_fee_usd="0",
+                commission_rate="0",
+                ad_rate="0",
+                return_loss_rate="0",
+            ),
+            fee_rule(),
+        )
+
+
+def test_result_model_rechecks_positive_prices_after_rounding() -> None:
+    """Fails if direct result construction bypasses post-normalization price constraints."""
+    with pytest.raises(ValidationError):
+        PricingResult(
+            purchase_cost_usd="0.004",
+            fixed_cost="0.004",
+            variable_rate="0",
+            profit=None,
+            margin=None,
+            break_even_price="1",
+            target_price="1",
+            assumptions={"purchase_cost_cny": Decimal("0.004")},
+        )
 
 
 @pytest.mark.parametrize(

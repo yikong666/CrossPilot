@@ -24,6 +24,10 @@ def _rate(value: Decimal) -> Decimal:
     return value.quantize(_RATE, rounding=ROUND_HALF_UP)
 
 
+def _decimal(value: Decimal | str | int | float) -> Decimal:
+    return value if isinstance(value, Decimal) else Decimal(str(value))
+
+
 class MissingPricingFieldsError(CrossPilotError):
     """Raised when a deterministic formula cannot be evaluated from supplied inputs."""
 
@@ -41,8 +45,8 @@ class PricingResult(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    purchase_cost_usd: Decimal = Field(ge=0)
-    fixed_cost: Decimal = Field(ge=0)
+    purchase_cost_usd: Decimal = Field(gt=0)
+    fixed_cost: Decimal = Field(gt=0)
     variable_rate: Decimal = Field(ge=0)
     profit: Decimal | None = None
     margin: Decimal | None = None
@@ -56,15 +60,16 @@ class PricingResult(BaseModel):
         "profit",
         "break_even_price",
         "target_price",
+        mode="before",
     )
     @classmethod
-    def round_money_fields(cls, value: Decimal | None) -> Decimal | None:
-        return None if value is None else _money(value)
+    def round_money_fields(cls, value: Decimal | str | int | float | None) -> Decimal | None:
+        return None if value is None else _money(_decimal(value))
 
-    @field_validator("variable_rate", "margin")
+    @field_validator("variable_rate", "margin", mode="before")
     @classmethod
-    def round_rate_fields(cls, value: Decimal | None) -> Decimal | None:
-        return None if value is None else _rate(value)
+    def round_rate_fields(cls, value: Decimal | str | int | float | None) -> Decimal | None:
+        return None if value is None else _rate(_decimal(value))
 
 
 def _prefer_user_value(

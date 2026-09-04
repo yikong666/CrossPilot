@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
@@ -33,6 +34,7 @@ async def test_reads_one_matching_us_amazon_rule_with_parameterized_query() -> N
                 "fba_fee_usd": "4.00",
                 "fx_cny_per_usd": "7.00",
                 "fee_id": "electronics-lightweight",
+                "effective_date": "2026-09-01",
             }
         ]
     )
@@ -42,6 +44,7 @@ async def test_reads_one_matching_us_amazon_rule_with_parameterized_query() -> N
     assert rule.commission_rate == Decimal("0.1500")
     assert rule.fba_fee_usd == Decimal("4.00")
     assert rule.fx_cny_per_usd == Decimal("7.00")
+    assert rule.effective_date == date(2026, 9, 1)
     assert client.params == {"category": "consumer_electronics", "weight_kg": Decimal("0.42")}
     assert client.cypher is not None
     assert "amazon_us" in client.cypher
@@ -59,14 +62,52 @@ async def test_missing_fee_rule_lists_fields_instead_of_inventing_defaults() -> 
 
 
 @pytest.mark.asyncio
-async def test_rejects_non_unique_effective_rule() -> None:
-    """Fails if ambiguous graph data arbitrarily selects one of multiple fee rules."""
+async def test_selects_latest_effective_rule_when_history_rows_match() -> None:
+    """Fails if a historical applicable rule prevents the newest rule from being used."""
     rows = [
-        {"commission_rate": "0.15", "fba_fee_usd": "4", "fx_cny_per_usd": "7"},
-        {"commission_rate": "0.16", "fba_fee_usd": "5", "fx_cny_per_usd": "7"},
+        {
+            "fee_id": "electronics-current",
+            "commission_rate": "0.15",
+            "fba_fee_usd": "4",
+            "fx_cny_per_usd": "7",
+            "effective_date": "2026-09-01",
+        },
+        {
+            "fee_id": "electronics-historical",
+            "commission_rate": "0.16",
+            "fba_fee_usd": "5",
+            "fx_cny_per_usd": "7",
+            "effective_date": "2026-08-01",
+        },
     ]
 
-    with pytest.raises(FeeRuleNotFoundError, match="Multiple"):
+    rule = await FeeRuleRepository(RecordingReadClient(rows)).get_rule("home_goods", Decimal("1.0"))
+
+    assert rule.fee_id == "electronics-current"
+    assert rule.effective_date == date(2026, 9, 1)
+
+
+@pytest.mark.asyncio
+async def test_rejects_rules_tied_for_latest_effective_date() -> None:
+    """Fails if two equally preferred rules are resolved arbitrarily."""
+    rows = [
+        {
+            "fee_id": "rule-a",
+            "commission_rate": "0.15",
+            "fba_fee_usd": "4",
+            "fx_cny_per_usd": "7",
+            "effective_date": "2026-09-01",
+        },
+        {
+            "fee_id": "rule-b",
+            "commission_rate": "0.16",
+            "fba_fee_usd": "5",
+            "fx_cny_per_usd": "7",
+            "effective_date": "2026-09-01",
+        },
+    ]
+
+    with pytest.raises(FeeRuleNotFoundError, match="same effective date"):
         await FeeRuleRepository(RecordingReadClient(rows)).get_rule("home_goods", Decimal("1.0"))
 
 
