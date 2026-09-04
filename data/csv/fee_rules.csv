@@ -1,0 +1,4 @@
+fee_rule_id,category_id,referral_rate,fulfillment_fee
+fee_electronics_accessories,category_electronics_accessories,0.15,4.95
+fee_children_toys,category_children_toys,0.15,4.95
+fee_home_goods,category_home_goods,0.15,4.95

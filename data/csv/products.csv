@@ -1,0 +1,97 @@
+product_id,name,category_id,brand_id,marketplace_id,price,rating,review_count,bsr,is_synthetic
+product_ea_001,USB-C Cable 01,category_electronics_accessories,brand_ea_nova,marketplace_amazon_us,33.64,4.2,4060,128193,true
+product_ea_002,GaN Charger 02,category_electronics_accessories,brand_ea_pulse,marketplace_amazon_us,51.83,3.8,4531,15216,true
+product_ea_003,Wireless Earbuds 03,category_electronics_accessories,brand_ea_vector,marketplace_amazon_us,27.06,4.8,4387,7298,true
+product_ea_004,Travel Adapter 04,category_electronics_accessories,brand_ea_orbit,marketplace_amazon_us,88.95,3.6,6333,147550,true
+product_ea_005,USB-C Cable 05,category_electronics_accessories,brand_ea_nova,marketplace_amazon_us,77.18,4.7,2968,164808,true
+product_ea_006,GaN Charger 06,category_electronics_accessories,brand_ea_pulse,marketplace_amazon_us,77.87,3.7,7518,72479,true
+product_ea_007,Wireless Earbuds 07,category_electronics_accessories,brand_ea_vector,marketplace_amazon_us,25.73,3.8,7195,93722,true
+product_ea_008,Travel Adapter 08,category_electronics_accessories,brand_ea_orbit,marketplace_amazon_us,43.27,4.3,2192,76343,true
+product_ea_009,USB-C Cable 09,category_electronics_accessories,brand_ea_nova,marketplace_amazon_us,63.83,4.7,8287,162723,true
+product_ea_010,GaN Charger 10,category_electronics_accessories,brand_ea_pulse,marketplace_amazon_us,46.05,3.5,4943,130086,true
+product_ea_011,Wireless Earbuds 11,category_electronics_accessories,brand_ea_vector,marketplace_amazon_us,87.95,4.4,1361,13655,true
+product_ea_012,Travel Adapter 12,category_electronics_accessories,brand_ea_orbit,marketplace_amazon_us,63.87,4.9,3865,30313,true
+product_ea_013,USB-C Cable 13,category_electronics_accessories,brand_ea_nova,marketplace_amazon_us,76.90,4.6,2112,77188,true
+product_ea_014,GaN Charger 14,category_electronics_accessories,brand_ea_pulse,marketplace_amazon_us,12.00,4.2,3491,9364,true
+product_ea_015,Wireless Earbuds 15,category_electronics_accessories,brand_ea_vector,marketplace_amazon_us,64.38,4.2,240,45486,true
+product_ea_016,Travel Adapter 16,category_electronics_accessories,brand_ea_orbit,marketplace_amazon_us,84.00,4.0,6265,36318,true
+product_ea_017,USB-C Cable 17,category_electronics_accessories,brand_ea_nova,marketplace_amazon_us,60.84,4.0,7029,4889,true
+product_ea_018,GaN Charger 18,category_electronics_accessories,brand_ea_pulse,marketplace_amazon_us,45.67,4.5,2595,118949,true
+product_ea_019,Wireless Earbuds 19,category_electronics_accessories,brand_ea_vector,marketplace_amazon_us,57.82,4.6,1046,106909,true
+product_ea_020,Travel Adapter 20,category_electronics_accessories,brand_ea_orbit,marketplace_amazon_us,80.33,3.9,2377,151615,true
+product_ea_021,USB-C Cable 21,category_electronics_accessories,brand_ea_nova,marketplace_amazon_us,40.46,4.0,851,49405,true
+product_ea_022,GaN Charger 22,category_electronics_accessories,brand_ea_pulse,marketplace_amazon_us,15.89,3.9,1524,20623,true
+product_ea_023,Wireless Earbuds 23,category_electronics_accessories,brand_ea_vector,marketplace_amazon_us,48.86,3.6,4894,132900,true
+product_ea_024,Travel Adapter 24,category_electronics_accessories,brand_ea_orbit,marketplace_amazon_us,65.93,4.5,4588,40264,true
+product_ea_025,USB-C Cable 25,category_electronics_accessories,brand_ea_nova,marketplace_amazon_us,56.79,4.0,6423,103032,true
+product_ea_026,GaN Charger 26,category_electronics_accessories,brand_ea_pulse,marketplace_amazon_us,83.44,4.6,4330,135819,true
+product_ea_027,Wireless Earbuds 27,category_electronics_accessories,brand_ea_vector,marketplace_amazon_us,76.04,4.6,3423,66289,true
+product_ea_028,Travel Adapter 28,category_electronics_accessories,brand_ea_orbit,marketplace_amazon_us,28.74,3.7,6426,105496,true
+product_ea_029,USB-C Cable 29,category_electronics_accessories,brand_ea_nova,marketplace_amazon_us,88.89,4.1,4964,125310,true
+product_ea_030,GaN Charger 30,category_electronics_accessories,brand_ea_pulse,marketplace_amazon_us,22.31,4.1,102,42921,true
+product_ea_031,Wireless Earbuds 31,category_electronics_accessories,brand_ea_vector,marketplace_amazon_us,27.23,4.6,4147,170370,true
+product_ea_032,Travel Adapter 32,category_electronics_accessories,brand_ea_orbit,marketplace_amazon_us,29.22,4.1,5563,50790,true
+product_ct_001,Building Blocks 01,category_children_toys,brand_ct_spark,marketplace_amazon_us,62.67,4.3,2682,79470,true
+product_ct_002,STEM Robot Kit 02,category_children_toys,brand_ct_wonder,marketplace_amazon_us,58.67,4.6,3532,86161,true
+product_ct_003,Puzzle Set 03,category_children_toys,brand_ct_cedar,marketplace_amazon_us,61.71,4.7,2128,7869,true
+product_ct_004,Craft Kit 04,category_children_toys,brand_ct_playful,marketplace_amazon_us,19.52,3.5,413,87703,true
+product_ct_005,Building Blocks 05,category_children_toys,brand_ct_spark,marketplace_amazon_us,24.59,3.7,2648,83954,true
+product_ct_006,STEM Robot Kit 06,category_children_toys,brand_ct_wonder,marketplace_amazon_us,32.18,3.6,3259,162580,true
+product_ct_007,Puzzle Set 07,category_children_toys,brand_ct_cedar,marketplace_amazon_us,48.90,3.9,8376,166184,true
+product_ct_008,Craft Kit 08,category_children_toys,brand_ct_playful,marketplace_amazon_us,20.44,3.8,3913,131782,true
+product_ct_009,Building Blocks 09,category_children_toys,brand_ct_spark,marketplace_amazon_us,54.59,4.3,7705,118743,true
+product_ct_010,STEM Robot Kit 10,category_children_toys,brand_ct_wonder,marketplace_amazon_us,16.73,3.8,7335,177931,true
+product_ct_011,Puzzle Set 11,category_children_toys,brand_ct_cedar,marketplace_amazon_us,13.94,4.6,2743,3805,true
+product_ct_012,Craft Kit 12,category_children_toys,brand_ct_playful,marketplace_amazon_us,44.91,4.5,6356,104811,true
+product_ct_013,Building Blocks 13,category_children_toys,brand_ct_spark,marketplace_amazon_us,47.94,3.8,2344,47996,true
+product_ct_014,STEM Robot Kit 14,category_children_toys,brand_ct_wonder,marketplace_amazon_us,39.62,3.9,3106,128869,true
+product_ct_015,Puzzle Set 15,category_children_toys,brand_ct_cedar,marketplace_amazon_us,44.95,4.3,4283,110797,true
+product_ct_016,Craft Kit 16,category_children_toys,brand_ct_playful,marketplace_amazon_us,26.75,3.5,2013,66148,true
+product_ct_017,Building Blocks 17,category_children_toys,brand_ct_spark,marketplace_amazon_us,32.55,4.2,4270,129591,true
+product_ct_018,STEM Robot Kit 18,category_children_toys,brand_ct_wonder,marketplace_amazon_us,13.25,3.9,6686,39902,true
+product_ct_019,Puzzle Set 19,category_children_toys,brand_ct_cedar,marketplace_amazon_us,28.70,4.8,5296,26080,true
+product_ct_020,Craft Kit 20,category_children_toys,brand_ct_playful,marketplace_amazon_us,18.19,4.6,3979,128797,true
+product_ct_021,Building Blocks 21,category_children_toys,brand_ct_spark,marketplace_amazon_us,22.82,4.3,2039,8643,true
+product_ct_022,STEM Robot Kit 22,category_children_toys,brand_ct_wonder,marketplace_amazon_us,59.54,4.8,114,142116,true
+product_ct_023,Puzzle Set 23,category_children_toys,brand_ct_cedar,marketplace_amazon_us,26.08,3.7,4332,38588,true
+product_ct_024,Craft Kit 24,category_children_toys,brand_ct_playful,marketplace_amazon_us,24.63,3.7,2873,171972,true
+product_ct_025,Building Blocks 25,category_children_toys,brand_ct_spark,marketplace_amazon_us,12.62,3.8,7049,94424,true
+product_ct_026,STEM Robot Kit 26,category_children_toys,brand_ct_wonder,marketplace_amazon_us,12.28,4.3,801,25400,true
+product_ct_027,Puzzle Set 27,category_children_toys,brand_ct_cedar,marketplace_amazon_us,26.24,4.9,433,29527,true
+product_ct_028,Craft Kit 28,category_children_toys,brand_ct_playful,marketplace_amazon_us,25.22,4.0,3226,94139,true
+product_ct_029,Building Blocks 29,category_children_toys,brand_ct_spark,marketplace_amazon_us,61.89,3.9,7177,133547,true
+product_ct_030,STEM Robot Kit 30,category_children_toys,brand_ct_wonder,marketplace_amazon_us,49.37,4.6,1437,156498,true
+product_ct_031,Puzzle Set 31,category_children_toys,brand_ct_cedar,marketplace_amazon_us,42.42,3.9,2320,124451,true
+product_ct_032,Craft Kit 32,category_children_toys,brand_ct_playful,marketplace_amazon_us,62.50,3.6,865,148491,true
+product_hg_001,Storage Organizer 01,category_home_goods,brand_hg_harbor,marketplace_amazon_us,82.34,3.9,7413,96021,true
+product_hg_002,Kitchen Container 02,category_home_goods,brand_hg_nest,marketplace_amazon_us,83.11,4.7,6722,87524,true
+product_hg_003,Wall Shelf 03,category_home_goods,brand_hg_mason,marketplace_amazon_us,75.85,3.8,6897,89347,true
+product_hg_004,Laundry Basket 04,category_home_goods,brand_hg_sage,marketplace_amazon_us,60.50,4.2,5661,158816,true
+product_hg_005,Storage Organizer 05,category_home_goods,brand_hg_harbor,marketplace_amazon_us,32.91,4.1,3523,6007,true
+product_hg_006,Kitchen Container 06,category_home_goods,brand_hg_nest,marketplace_amazon_us,22.58,4.1,1075,126075,true
+product_hg_007,Wall Shelf 07,category_home_goods,brand_hg_mason,marketplace_amazon_us,74.82,4.9,712,28017,true
+product_hg_008,Laundry Basket 08,category_home_goods,brand_hg_sage,marketplace_amazon_us,34.15,4.5,7701,49789,true
+product_hg_009,Storage Organizer 09,category_home_goods,brand_hg_harbor,marketplace_amazon_us,64.81,4.3,6638,124611,true
+product_hg_010,Kitchen Container 10,category_home_goods,brand_hg_nest,marketplace_amazon_us,66.81,4.8,2820,80159,true
+product_hg_011,Wall Shelf 11,category_home_goods,brand_hg_mason,marketplace_amazon_us,53.61,4.8,5506,53021,true
+product_hg_012,Laundry Basket 12,category_home_goods,brand_hg_sage,marketplace_amazon_us,106.11,3.7,2105,162760,true
+product_hg_013,Storage Organizer 13,category_home_goods,brand_hg_harbor,marketplace_amazon_us,60.46,3.9,7800,9137,true
+product_hg_014,Kitchen Container 14,category_home_goods,brand_hg_nest,marketplace_amazon_us,27.79,4.5,6215,67581,true
+product_hg_015,Wall Shelf 15,category_home_goods,brand_hg_mason,marketplace_amazon_us,108.53,4.7,4206,166416,true
+product_hg_016,Laundry Basket 16,category_home_goods,brand_hg_sage,marketplace_amazon_us,81.70,4.8,5330,126250,true
+product_hg_017,Storage Organizer 17,category_home_goods,brand_hg_harbor,marketplace_amazon_us,108.52,4.3,4100,119103,true
+product_hg_018,Kitchen Container 18,category_home_goods,brand_hg_nest,marketplace_amazon_us,54.56,4.5,2643,169977,true
+product_hg_019,Wall Shelf 19,category_home_goods,brand_hg_mason,marketplace_amazon_us,83.09,4.2,6808,50565,true
+product_hg_020,Laundry Basket 20,category_home_goods,brand_hg_sage,marketplace_amazon_us,37.22,4.6,7723,84827,true
+product_hg_021,Storage Organizer 21,category_home_goods,brand_hg_harbor,marketplace_amazon_us,55.76,4.0,6822,14360,true
+product_hg_022,Kitchen Container 22,category_home_goods,brand_hg_nest,marketplace_amazon_us,25.44,4.4,437,123566,true
+product_hg_023,Wall Shelf 23,category_home_goods,brand_hg_mason,marketplace_amazon_us,41.84,4.2,1173,53875,true
+product_hg_024,Laundry Basket 24,category_home_goods,brand_hg_sage,marketplace_amazon_us,71.81,3.8,8463,79734,true
+product_hg_025,Storage Organizer 25,category_home_goods,brand_hg_harbor,marketplace_amazon_us,91.27,4.8,2704,141581,true
+product_hg_026,Kitchen Container 26,category_home_goods,brand_hg_nest,marketplace_amazon_us,44.81,4.7,7170,150350,true
+product_hg_027,Wall Shelf 27,category_home_goods,brand_hg_mason,marketplace_amazon_us,24.03,4.2,3719,37146,true
+product_hg_028,Laundry Basket 28,category_home_goods,brand_hg_sage,marketplace_amazon_us,66.97,3.8,2488,68567,true
+product_hg_029,Storage Organizer 29,category_home_goods,brand_hg_harbor,marketplace_amazon_us,27.33,4.6,3024,65088,true
+product_hg_030,Kitchen Container 30,category_home_goods,brand_hg_nest,marketplace_amazon_us,51.49,4.9,7024,104362,true
+product_hg_031,Wall Shelf 31,category_home_goods,brand_hg_mason,marketplace_amazon_us,23.29,4.9,7770,93860,true
+product_hg_032,Laundry Basket 32,category_home_goods,brand_hg_sage,marketplace_amazon_us,48.16,4.5,8314,22167,true
