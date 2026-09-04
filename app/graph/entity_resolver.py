@@ -57,14 +57,18 @@ class EntityResolver:
         *,
         schema: SchemaRegistry,
         score_threshold: float = 0.75,
+        ambiguity_margin: float = 0.05,
         index_name: str = "product_name_embeddings",
     ) -> None:
         if not 0 <= score_threshold <= 1:
             raise ValueError("score_threshold must be between 0 and 1")
+        if not 0 <= ambiguity_margin <= 1:
+            raise ValueError("ambiguity_margin must be between 0 and 1")
         self.client = client
         self.embedding = embedding
         self.schema = schema
         self.score_threshold = score_threshold
+        self.ambiguity_margin = ambiguity_margin
         self.index_name = index_name
 
     async def resolve(
@@ -86,15 +90,22 @@ class EntityResolver:
                 "labels": list(labels),
             },
         )
+        candidates = sorted(rows[:top_k], key=lambda row: float(row["score"]), reverse=True)
+        top_score = float(candidates[0]["score"]) if candidates else 0.0
+        ambiguous = (
+            len(candidates) > 1
+            and top_score - float(candidates[1]["score"]) < self.ambiguity_margin
+        )
+        confirmation_required = top_score < self.score_threshold or ambiguous
         return [
             EntityMatch(
                 entity_id=str(row["entity_id"]),
                 label=str(row["label"]),
                 display_name=str(row["display_name"]),
                 score=float(row["score"]),
-                needs_confirmation=float(row["score"]) < self.score_threshold,
+                needs_confirmation=confirmation_required,
             )
-            for row in rows[:top_k]
+            for row in candidates
         ]
 
     async def index_products(self, records: Sequence[Mapping[str, Any]]) -> int:

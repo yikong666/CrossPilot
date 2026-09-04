@@ -40,7 +40,10 @@ class CypherGenerator:
         system_prompt = (
             "你是 CrossPilot 的 Neo4j 查询生成器。仅输出 JSON 文本，字段为 cypher、params、"
             "purpose。Cypher 必须是单条、参数化、只读查询；不得将用户文本拼入 Cypher；"
-            "必须包含 LIMIT，且 LIMIT <= 50；只可使用给定 Schema。\n"
+            "必须包含 LIMIT，且 LIMIT <= 50；只可使用给定 Schema。"
+            "每个节点必须显式标注允许的标签，每条关系必须显式标注允许的类型；"
+            "禁止字符串字面量，业务条件值全部放入 params；"
+            "RETURN 不得返回完整节点或关系，只能返回允许属性或受控聚合并使用明确别名。\n"
             f"Schema version: {self.schema.version_hash}\n{self.schema.compact_text()}"
         )
         context: dict[str, Any] = {

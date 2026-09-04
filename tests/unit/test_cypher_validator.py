@@ -53,7 +53,9 @@ def test_rejects_unknown_label(validator: CypherValidator) -> None:
 
 def test_rejects_unknown_label_predicate(validator: CypherValidator) -> None:
     with pytest.raises(CypherValidationError, match="Unknown label: Customer"):
-        validator.validate("MATCH (p) WHERE p:Customer RETURN p LIMIT 1", {})
+        validator.validate(
+            "MATCH (p:Product) WHERE p:Customer RETURN p.name AS name LIMIT 1", {}
+        )
 
 
 def test_rejects_unknown_relationship(validator: CypherValidator) -> None:
@@ -61,6 +63,87 @@ def test_rejects_unknown_relationship(validator: CypherValidator) -> None:
         validator.validate(
             "MATCH (p:Product)-[:PURCHASED]->(b:Brand) RETURN p LIMIT 1", {}
         )
+
+
+@pytest.mark.parametrize(
+    ("cypher", "message"),
+    [
+        ("MATCH (n) RETURN n.name AS name LIMIT 1", "node label is required"),
+        (
+            "MATCH (p:Product)-[r]->(b:Brand) RETURN p.name AS name LIMIT 1",
+            "relationship type is required",
+        ),
+        (
+            "MATCH (p:Product)-->(b:Brand) RETURN p.name AS name LIMIT 1",
+            "typed relationship pattern is required",
+        ),
+        (
+            "MATCH (p:Product)-[:MADE_BY|PURCHASED]->(b:Brand) "
+            "RETURN p.name AS name LIMIT 1",
+            "Unknown relationship: PURCHASED",
+        ),
+        ("MATCH (n:`Customer`) RETURN n.name AS name LIMIT 1", "Backtick"),
+        ("MATCH (p:Product) RETURN p.`secret` AS secret LIMIT 1", "Backtick"),
+        (
+            "MATCH (p:Product) RETURN p[$field] AS secret LIMIT 1",
+            "Dynamic property access",
+        ),
+        ("MATCH (p:Product) RETURN p LIMIT 1", "Returning graph variables"),
+        ("MATCH (p:Product) RETURN * LIMIT 1", "Returning graph variables"),
+        (
+            "MATCH (p:Product)-[r:MADE_BY]->(b:Brand) RETURN r LIMIT 1",
+            "Returning graph variables",
+        ),
+    ],
+)
+def test_rejects_unparseable_or_unbounded_graph_projections(
+    validator: CypherValidator,
+    cypher: str,
+    message: str,
+) -> None:
+    params = {"field": "secret"} if "$field" in cypher else {}
+    with pytest.raises(CypherValidationError, match=message):
+        validator.validate(cypher, params)
+
+
+def test_rejects_business_string_literal_instead_of_parameter(
+    validator: CypherValidator,
+) -> None:
+    with pytest.raises(CypherValidationError, match="String literals are not allowed"):
+        validator.validate(
+            "MATCH (p:Product) WHERE p.name = 'Example' RETURN p.name AS name LIMIT 1",
+            {},
+        )
+
+
+def test_rejects_business_numeric_literal_instead_of_parameter(
+    validator: CypherValidator,
+) -> None:
+    with pytest.raises(CypherValidationError, match="WHERE values must use parameters"):
+        validator.validate(
+            "MATCH (p:Product) WHERE p.price > 10 RETURN p.name AS name LIMIT 1",
+            {},
+        )
+
+
+def test_rejects_business_boolean_literal_instead_of_parameter(
+    validator: CypherValidator,
+) -> None:
+    with pytest.raises(CypherValidationError, match="WHERE values must use parameters"):
+        validator.validate(
+            "MATCH (f:Feature) WHERE f.value = true RETURN f.name AS name LIMIT 1",
+            {},
+        )
+
+
+def test_returns_allowlisted_projection_fields(validator: CypherValidator) -> None:
+    validated = validator.validate(
+        "MATCH (p:Product) RETURN p.product_id AS product_id, "
+        "avg(p.price) AS average_price LIMIT 10",
+        {},
+    )
+
+    assert validated.return_fields == frozenset({"product_id", "average_price"})
 
 
 def test_rejects_unknown_property_for_label(validator: CypherValidator) -> None:
@@ -83,15 +166,19 @@ def test_rejects_unauthorized_call(validator: CypherValidator) -> None:
 @pytest.mark.parametrize(
     ("cypher", "params", "message"),
     [
-        ("MATCH (p:Product) RETURN p", {}, "LIMIT is required"),
-        ("MATCH (p:Product) RETURN p LIMIT 51", {}, "LIMIT must be between 1 and 50"),
+        ("MATCH (p:Product) RETURN p.name AS name", {}, "LIMIT is required"),
         (
-            "MATCH (p:Product) WHERE p.name = $name RETURN p LIMIT 1",
+            "MATCH (p:Product) RETURN p.name AS name LIMIT 51",
+            {},
+            "LIMIT must be between 1 and 50",
+        ),
+        (
+            "MATCH (p:Product) WHERE p.name = $name RETURN p.name AS name LIMIT 1",
             {},
             "Missing parameters: name",
         ),
         (
-            "MATCH (p:Product) RETURN p LIMIT 1",
+            "MATCH (p:Product) RETURN p.name AS name LIMIT 1",
             {"unused": "x"},
             "Unexpected parameters: unused",
         ),

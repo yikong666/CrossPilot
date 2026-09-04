@@ -113,6 +113,10 @@ async def test_cypher_generator_supplies_schema_entities_and_repair_feedback() -
     assert "LIMIT <= 50" in prompt
     assert "只读" in prompt
     assert "参数" in prompt
+    assert "每个节点必须显式标注允许的标签" in prompt
+    assert "每条关系必须显式标注允许的类型" in prompt
+    assert "禁止字符串字面量" in prompt
+    assert "RETURN 不得返回完整节点或关系" in prompt
     assert "Product(" in prompt
     assert "product_id" in prompt
     assert "product-1" in prompt
