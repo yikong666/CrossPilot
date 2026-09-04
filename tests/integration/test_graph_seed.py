@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -176,26 +177,59 @@ def test_repository_keeps_csv_assets_under_data_csv() -> None:
 
 
 def test_seed_loader_parses_numeric_and_boolean_product_properties(tmp_path: Path) -> None:
-    """Removing CSV coercion would leave graph properties as strings and fail this test."""
-    from scripts.seed_graph import load_csv_rows
+    """Removing scalar/date coercion would leave graph properties incompatible with Cypher."""
+    from scripts.seed_graph import _merge_nodes, load_csv_rows
 
-    csv_path = tmp_path / "products.csv"
+    csv_path = tmp_path / "fee_rules.csv"
     csv_path.write_text(
-        "product_id,price,rating,review_count,bsr,is_synthetic\n"
-        "product_test,19.95,4.7,123,456,true\n",
+        "fee_id,price,rating,review_count,bsr,is_synthetic,effective_date\n"
+        "fee_test,19.95,4.7,123,456,true,2026-01-01\n",
         encoding="utf-8",
     )
 
-    assert load_csv_rows(csv_path) == [
+    rows = load_csv_rows(csv_path)
+    assert rows == [
         {
-            "product_id": "product_test",
+            "fee_id": "fee_test",
             "price": 19.95,
             "rating": 4.7,
             "review_count": 123,
             "bsr": 456,
             "is_synthetic": True,
+            "effective_date": date(2026, 1, 1),
         }
     ]
+
+    class RecordingSession:
+        def __init__(self) -> None:
+            self.query = ""
+            self.rows: list[dict[str, object]] = []
+
+        def __enter__(self) -> "RecordingSession":
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            return None
+
+        def run(self, query: str, *, rows: list[dict[str, object]]) -> "RecordingSession":
+            self.query = query
+            self.rows = rows
+            return self
+
+        def consume(self) -> None:
+            return None
+
+    class RecordingDriver:
+        def __init__(self) -> None:
+            self.recording_session = RecordingSession()
+
+        def session(self) -> RecordingSession:
+            return self.recording_session
+
+    driver = RecordingDriver()
+    _merge_nodes(driver, "FeeRule", "fee_id", rows)
+    assert "SET node += row" in driver.recording_session.query
+    assert driver.recording_session.rows[0]["effective_date"] == date(2026, 1, 1)
 
 
 def test_graph_verification_flags_each_required_data_integrity_failure() -> None:
