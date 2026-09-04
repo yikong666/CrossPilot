@@ -9,10 +9,12 @@ from ui.api_client import (
     SSEProtocolError,
     SSEStreamInterrupted,
     parse_sse_chunks,
+    resume_analysis,
     stream_analysis,
 )
 from ui.components import (
     apply_sse_event,
+    begin_new_analysis,
     build_analysis_payload,
     business_event_message,
     initialize_session_state,
@@ -155,6 +157,45 @@ async def test_stream_analysis_sanitizes_http_failure() -> None:
     await client.aclose()
 
 
+@pytest.mark.asyncio
+async def test_resume_analysis_posts_fields_envelope_without_losing_requested_values() -> None:
+    """Sending bare fields would violate the paused-workflow resume contract."""
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["payload"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=(
+                f"event: workflow_started\ndata: {event_data('workflow_started', '继续分析')}\n\n"
+            ),
+        )
+
+    fields = {"selling_price_usd": "29.99", "fba_fee_usd": "4.00"}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        events = [
+            event
+            async for event in resume_analysis(
+                "thread-1",
+                fields,
+                base_url="https://api.example.test",
+                client=client,
+            )
+        ]
+
+    assert captured == {
+        "method": "POST",
+        "path": "/api/v1/analysis/thread-1/resume",
+        "payload": {"fields": fields},
+    }
+    assert [(event.event_type, event.message) for event in events] == [
+        ("workflow_started", "继续分析"),
+    ]
+
+
 def test_business_event_message_hides_technical_agent_name() -> None:
     """Exposing raw agent identifiers would make progress unreadable to business users."""
     event = {
@@ -255,3 +296,29 @@ def test_apply_sse_event_preserves_thread_and_only_requested_missing_fields() ->
     assert state["trace_id"] == "trace-1"
     assert state["missing_fields"] == ["selling_price_usd", "fba_fee_usd"]
     assert state["progress"] == ["需要补充信息后继续分析"]
+
+
+def test_begin_new_analysis_clears_previous_task_state_but_keeps_chat_history() -> None:
+    """Leaving a prior thread or graph in state would mix a failed new task with old evidence."""
+    state: dict[str, object] = {
+        "thread_id": "old-thread",
+        "trace_id": "old-trace",
+        "recent_product": {"name": "旧商品"},
+        "messages": [{"role": "assistant", "content": "旧回答"}],
+        "missing_fields": ["selling_price_usd"],
+        "graph_data": {"nodes": [{"id": "old"}], "edges": []},
+        "progress": ["旧进度"],
+        "answer_buffer": "旧答案片段",
+    }
+    product = {"name": "新商品", "category": "home_goods", "purchase_cost_cny": "80"}
+
+    begin_new_analysis(state, product)
+
+    assert state["thread_id"] is None
+    assert state["trace_id"] is None
+    assert state["recent_product"] == product
+    assert state["missing_fields"] == []
+    assert state["graph_data"] == {"nodes": [], "edges": []}
+    assert state["progress"] == []
+    assert state["answer_buffer"] == ""
+    assert state["messages"] == [{"role": "assistant", "content": "旧回答"}]

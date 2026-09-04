@@ -53,6 +53,17 @@ def initialize_session_state(state: MutableMapping[str, Any]) -> None:
         state.setdefault(key, value)
 
 
+def begin_new_analysis(state: MutableMapping[str, Any], product: Mapping[str, Any]) -> None:
+    """Clear transient evidence from a previous task before starting a new analysis."""
+    state["thread_id"] = None
+    state["trace_id"] = None
+    state["recent_product"] = dict(product)
+    state["missing_fields"] = []
+    state["graph_data"] = {"nodes": [], "edges": []}
+    state["progress"] = []
+    state["answer_buffer"] = ""
+
+
 def apply_sse_event(state: MutableMapping[str, Any], event: Mapping[str, Any]) -> None:
     """Update only this page's session state from one validated SSE event."""
     thread_id = event.get("thread_id")

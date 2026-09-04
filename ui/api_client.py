@@ -97,11 +97,11 @@ async def resume_analysis(
     endpoint = f"{(base_url or get_api_base_url()).rstrip('/')}/api/v1/analysis/{thread_id}/resume"
     if client is None:
         async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as owned_client:
-            async for event in _post_sse(owned_client, endpoint, dict(fields)):
+            async for event in _post_sse(owned_client, endpoint, {"fields": dict(fields)}):
                 yield event
         return
 
-    async for event in _post_sse(client, endpoint, dict(fields)):
+    async for event in _post_sse(client, endpoint, {"fields": dict(fields)}):
         yield event
 
 

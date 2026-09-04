@@ -9,6 +9,7 @@ import streamlit as st
 from ui.api_client import APIClientError, fetch_graph, resume_analysis, stream_analysis
 from ui.components import (
     apply_sse_event,
+    begin_new_analysis,
     build_analysis_payload,
     initialize_session_state,
     render_missing_fields_form,
@@ -80,10 +81,8 @@ if question:
         st.error("请先填写商品名称和采购成本，再提交分析问题。")
     else:
         request = build_analysis_payload(product, question)
-        st.session_state.recent_product = request["product"]
+        begin_new_analysis(session_state, request["product"])
         st.session_state.messages.append({"role": "user", "content": question})
-        st.session_state.progress = []
-        st.session_state.answer_buffer = ""
         _run_stream(stream_analysis(request))
 
 missing_fields = st.session_state.missing_fields
