@@ -221,6 +221,8 @@ __marimo__/
 !.env.example
 logs/
 .superpowers/
+.uv-cache/
+.pytest-tmp/
 tmp/
 temp/
 neo4j/data/
