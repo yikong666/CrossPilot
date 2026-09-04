@@ -216,3 +216,26 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# CrossPilot local runtime data
+!.env.example
+logs/
+.superpowers/
+tmp/
+temp/
+neo4j/data/
+neo4j/logs/
+neo4j/import/
+neo4j/plugins/
+volumes/
+models/
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.onnx
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
