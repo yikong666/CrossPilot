@@ -25,17 +25,17 @@ def _write_csv(output_dir: Path, filename: str, rows: list[dict[str, Any]]) -> N
 def _categories() -> list[dict[str, str]]:
     return [
         {
-            "category_id": "category_electronics_accessories",
+            "category_id": "consumer_electronics",
             "name": "Electronics Accessories",
             "category_group": "Consumer Electronics",
         },
         {
-            "category_id": "category_children_toys",
+            "category_id": "children_toys",
             "name": "Children Toys",
             "category_group": "Children Products",
         },
         {
-            "category_id": "category_home_goods",
+            "category_id": "home_goods",
             "name": "Home Goods",
             "category_group": "Home and Kitchen",
         },
@@ -44,7 +44,7 @@ def _categories() -> list[dict[str, str]]:
 
 def _catalog() -> dict[str, dict[str, Any]]:
     return {
-        "category_electronics_accessories": {
+        "consumer_electronics": {
             "prefix": "EA",
             "names": ["USB-C Cable", "GaN Charger", "Wireless Earbuds", "Travel Adapter"],
             "brands": ["brand_ea_nova", "brand_ea_pulse", "brand_ea_vector", "brand_ea_orbit"],
@@ -58,7 +58,7 @@ def _catalog() -> dict[str, dict[str, Any]]:
             "risk_ids": ["risk_battery", "risk_electrical", "risk_wireless"],
             "price": (12, 89),
         },
-        "category_children_toys": {
+        "children_toys": {
             "prefix": "CT",
             "names": ["Building Blocks", "STEM Robot Kit", "Puzzle Set", "Craft Kit"],
             "brands": ["brand_ct_spark", "brand_ct_wonder", "brand_ct_cedar", "brand_ct_playful"],
@@ -72,7 +72,7 @@ def _catalog() -> dict[str, dict[str, Any]]:
             "risk_ids": ["risk_age", "risk_toy_material", "risk_small_parts"],
             "price": (10, 65),
         },
-        "category_home_goods": {
+        "home_goods": {
             "prefix": "HG",
             "names": ["Storage Organizer", "Kitchen Container", "Wall Shelf", "Laundry Basket"],
             "brands": ["brand_hg_harbor", "brand_hg_nest", "brand_hg_mason", "brand_hg_sage"],
@@ -232,21 +232,26 @@ def generate_seed_data(output_dir: Path, manifest_path: Path | None = None) -> d
     ]
     fee_rules = [
         {
-            "fee_rule_id": f"fee_{category['category_id'].removeprefix('category_')}",
+            "fee_rule_id": f"fee_{category['category_id']}",
             "category_id": category["category_id"],
-            "fee_id": f"fee_{category['category_id'].removeprefix('category_')}",
+            "fee_id": f"fee_{category['category_id']}",
+            "marketplace": "amazon_us",
             "referral_rate": "0.15",
             "referral_fee_rate": "0.15",
             "commission_rate": "0.15",
             "fulfillment_fee": "4.95",
             "fba_fee": "4.95",
+            "fba_fee_usd": "4.95",
+            "fx_cny_per_usd": "7.20",
+            "min_weight_kg": "0.00",
+            "max_weight_kg": "2.00",
             "effective_date": "2026-01-01",
         }
         for category in categories
     ]
     compliance_rules = [
         {
-            "rule_id": f"rule_{category['category_id'].removeprefix('category_')}_{index}",
+            "rule_id": f"rule_{category['category_id']}_{index}",
             "name": f"{category['name']} preparation rule {index}",
             "scope": category["name"],
             "description": "Synthetic compliance preparation reference; not legal advice.",
@@ -277,8 +282,7 @@ def generate_seed_data(output_dir: Path, manifest_path: Path | None = None) -> d
     category_by_product = {product["product_id"]: product["category_id"] for product in products}
     rules_by_category = {
         category["category_id"]: [
-            f"rule_{category['category_id'].removeprefix('category_')}_{index}"
-            for index in range(1, 3)
+            f"rule_{category['category_id']}_{index}" for index in range(1, 3)
         ]
         for category in categories
     }

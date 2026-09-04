@@ -15,9 +15,9 @@ from neo4j import GraphDatabase  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
 
 EXPECTED_CATEGORY_IDS = {
-    "category_electronics_accessories",
-    "category_children_toys",
-    "category_home_goods",
+    "consumer_electronics",
+    "children_toys",
+    "home_goods",
 }
 
 
@@ -29,6 +29,8 @@ def evaluate_graph_checks(
     incomplete_products: int,
     rules_without_documents: int,
     rules_without_categories: int,
+    categories_without_metrics: int,
+    orphan_market_metrics: int,
 ) -> dict[str, Any]:
     """Return a user-readable result for the graph checks collected from Neo4j."""
     issues: list[str] = []
@@ -51,6 +53,16 @@ def evaluate_graph_checks(
         issues.append(
             f"Found {rules_without_categories} ComplianceRules without target "
             "Category relationships."
+        )
+    if categories_without_metrics:
+        issues.append(
+            f"Found {categories_without_metrics} Categories without "
+            "HAS_MARKET_METRIC relationships."
+        )
+    if orphan_market_metrics:
+        issues.append(
+            f"Found {orphan_market_metrics} MarketMetrics without Category "
+            "HAS_MARKET_METRIC relationships."
         )
     return {"ok": not issues, "product_count": product_count, "issues": issues}
 
@@ -101,6 +113,16 @@ def verify_graph() -> dict[str, Any]:
                 "MATCH (r:ComplianceRule) WHERE NOT (r)-[:APPLIES_TO]->(:Category) "
                 "RETURN count(r) AS count",
             )
+            categories_without_metrics = _single_count(
+                session,
+                "MATCH (c:Category) WHERE NOT (c)-[:HAS_MARKET_METRIC]->(:MarketMetric) "
+                "RETURN count(c) AS count",
+            )
+            orphan_market_metrics = _single_count(
+                session,
+                "MATCH (m:MarketMetric) WHERE NOT (:Category)-[:HAS_MARKET_METRIC]->(m) "
+                "RETURN count(m) AS count",
+            )
     return evaluate_graph_checks(
         product_count=product_count,
         category_counts=category_counts,
@@ -108,6 +130,8 @@ def verify_graph() -> dict[str, Any]:
         incomplete_products=incomplete_products,
         rules_without_documents=rules_without_documents,
         rules_without_categories=rules_without_categories,
+        categories_without_metrics=categories_without_metrics,
+        orphan_market_metrics=orphan_market_metrics,
     )
 
 

@@ -35,7 +35,7 @@ NODE_SPECS = {
     "products.csv": ("Product", "product_id"),
     "features.csv": ("Feature", "feature_id"),
     "market_metrics.csv": ("MarketMetric", "metric_id"),
-    "fee_rules.csv": ("FeeRule", "fee_rule_id"),
+    "fee_rules.csv": ("FeeRule", "fee_id"),
     "risk_attributes.csv": ("RiskAttribute", "risk_id"),
     "compliance_rules.csv": ("ComplianceRule", "rule_id"),
     "documents.csv": ("Document", "document_id"),
@@ -50,7 +50,7 @@ RELATIONSHIP_SPECS = [
         "market_metrics.csv",
         ("Category", "category_id", "HAS_MARKET_METRIC", "MarketMetric", "metric_id"),
     ),
-    ("fee_rules.csv", ("Category", "category_id", "USES_FEE_RULE", "FeeRule", "fee_rule_id")),
+    ("fee_rules.csv", ("Category", "category_id", "USES_FEE_RULE", "FeeRule", "fee_id")),
     (
         "product_risks.csv",
         ("Product", "product_id", "HAS_RISK_ATTRIBUTE", "RiskAttribute", "risk_id"),
@@ -88,6 +88,10 @@ def load_csv_rows(path: Path) -> list[dict[str, Any]]:
         "commission_rate",
         "fulfillment_fee",
         "fba_fee",
+        "fba_fee_usd",
+        "fx_cny_per_usd",
+        "min_weight_kg",
+        "max_weight_kg",
     }
     rows: list[dict[str, Any]] = []
     with path.open(newline="", encoding="utf-8") as file:
@@ -158,11 +162,6 @@ def neo4j_is_available() -> bool:
     except ServiceUnavailable:
         return False
     return True
-
-
-def is_neo4j_connection_unavailable(error: BaseException) -> bool:
-    """Classify only the Neo4j driver's explicit connectivity failure type as unavailable."""
-    return isinstance(error, ServiceUnavailable)
 
 
 def seed_graph() -> dict[str, int]:

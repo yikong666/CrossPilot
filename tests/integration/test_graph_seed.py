@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -68,9 +69,9 @@ def test_generate_seed_data_creates_deterministic_complete_synthetic_dataset(
     assert 90 <= len(products) <= 120
     assert {product["is_synthetic"] for product in products} == {"true"}
     assert {product["category_id"] for product in products} == {
-        "category_electronics_accessories",
-        "category_children_toys",
-        "category_home_goods",
+        "consumer_electronics",
+        "children_toys",
+        "home_goods",
     }
     assert all(product["price"] and product["rating"] and product["bsr"] for product in products)
     assert all(category["category_group"] for category in categories)
@@ -85,6 +86,19 @@ def test_generate_seed_data_creates_deterministic_complete_synthetic_dataset(
     )
     assert all(
         rule["fee_id"] and rule["commission_rate"] and rule["fba_fee"] and rule["effective_date"]
+        for rule in fee_rules
+    )
+    assert {rule["category_id"] for rule in fee_rules} == {
+        "consumer_electronics",
+        "children_toys",
+        "home_goods",
+    }
+    assert all(
+        rule["marketplace"] == "amazon_us"
+        and rule["fba_fee_usd"]
+        and rule["fx_cny_per_usd"]
+        and rule["min_weight_kg"]
+        and rule["max_weight_kg"]
         for rule in fee_rules
     )
     assert all(risk["risk_level"] for risk in risk_attributes)
@@ -146,6 +160,7 @@ def test_schema_declares_constraints_indexes_and_vector_index() -> None:
     assert "REQUIRE n.brand_id IS UNIQUE" in schema
     assert "REQUIRE n.product_id IS UNIQUE" in schema
     assert "REQUIRE n.rule_id IS UNIQUE" in schema
+    assert "REQUIRE n.fee_id IS UNIQUE" in schema
     assert "product_name_embeddings" in schema
     assert "vector.dimensions`: 1024" in schema
     assert "vector.similarity_function`: 'cosine'" in schema
@@ -194,6 +209,8 @@ def test_graph_verification_flags_each_required_data_integrity_failure() -> None
         incomplete_products=2,
         rules_without_documents=1,
         rules_without_categories=1,
+        categories_without_metrics=1,
+        orphan_market_metrics=2,
     )
 
     assert result["ok"] is False
@@ -205,6 +222,8 @@ def test_graph_verification_flags_each_required_data_integrity_failure() -> None
         "Found 2 Products missing price, rating, or BSR.",
         "Found 1 ComplianceRules without supporting Documents.",
         "Found 1 ComplianceRules without target Category relationships.",
+        "Found 1 Categories without HAS_MARKET_METRIC relationships.",
+        "Found 2 MarketMetrics without Category HAS_MARKET_METRIC relationships.",
     ]
 
 
@@ -229,6 +248,27 @@ def test_seed_relationship_specs_preserve_prd_directionality() -> None:
     }
 
 
+def test_fee_rule_seed_spec_locks_task4_query_identity_and_fields() -> None:
+    """Changing FeeRule identity or dropping Task4 lookup fields would break pricing retrieval."""
+    from scripts.seed_graph import NODE_SPECS
+
+    assert NODE_SPECS["fee_rules.csv"] == ("FeeRule", "fee_id")
+    required_fields = {
+        "fee_id",
+        "category_id",
+        "marketplace",
+        "commission_rate",
+        "fba_fee",
+        "effective_date",
+        "fba_fee_usd",
+        "fx_cny_per_usd",
+        "min_weight_kg",
+        "max_weight_kg",
+    }
+    fee_rule = read_csv(Path("data/csv/fee_rules.csv"))[0]
+    assert required_fields <= set(fee_rule)
+
+
 def test_marketplace_seed_row_includes_prd_properties() -> None:
     """Omitting platform or currency would make marketplace facts incomplete in Neo4j."""
     from scripts.seed_graph import MARKETPLACE_ROW
@@ -242,14 +282,55 @@ def test_marketplace_seed_row_includes_prd_properties() -> None:
     }
 
 
-def test_neo4j_availability_only_classifies_explicit_connectivity_errors() -> None:
-    """Catching authentication or configuration errors as unavailable would hide real failures."""
+def test_neo4j_availability_reraises_non_connectivity_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Configuration and authentication failures must not be hidden as an unavailable database."""
     from neo4j.exceptions import ServiceUnavailable
 
-    from scripts.seed_graph import is_neo4j_connection_unavailable
+    import scripts.seed_graph as seed_graph
 
-    assert is_neo4j_connection_unavailable(ServiceUnavailable("offline")) is True
-    assert is_neo4j_connection_unavailable(ValueError("invalid configuration")) is False
+    settings = SimpleNamespace(
+        neo4j_uri="bolt://example.invalid:7687",
+        neo4j_user="neo4j",
+        neo4j_password=SimpleNamespace(get_secret_value=lambda: "password"),
+    )
+
+    class FailingDriver:
+        def __init__(self, error: BaseException) -> None:
+            self.error = error
+
+        def __enter__(self) -> "FailingDriver":
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            return None
+
+        def verify_connectivity(self) -> None:
+            raise self.error
+
+    monkeypatch.setattr(seed_graph, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        seed_graph.GraphDatabase,
+        "driver",
+        lambda *_args, **_kwargs: FailingDriver(ServiceUnavailable("offline")),
+    )
+    assert seed_graph.neo4j_is_available() is False
+
+    monkeypatch.setattr(
+        seed_graph, "get_settings", lambda: (_ for _ in ()).throw(ValueError("bad config"))
+    )
+    with pytest.raises(ValueError, match="bad config"):
+        seed_graph.neo4j_is_available()
+
+    monkeypatch.setattr(seed_graph, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        seed_graph.GraphDatabase,
+        "driver",
+        lambda *_args, **_kwargs: FailingDriver(RuntimeError("authentication failed")),
+    )
+    with pytest.raises(RuntimeError, match="authentication failed"):
+        seed_graph.neo4j_is_available()
 
 
 @pytest.mark.parametrize("script_name", ["seed_graph.py", "verify_graph.py"])

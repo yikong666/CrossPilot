@@ -5,7 +5,7 @@ CREATE CONSTRAINT marketplace_id_unique IF NOT EXISTS FOR (n:Marketplace) REQUIR
 CREATE CONSTRAINT product_id_unique IF NOT EXISTS FOR (n:Product) REQUIRE n.product_id IS UNIQUE;
 CREATE CONSTRAINT feature_id_unique IF NOT EXISTS FOR (n:Feature) REQUIRE n.feature_id IS UNIQUE;
 CREATE CONSTRAINT metric_id_unique IF NOT EXISTS FOR (n:MarketMetric) REQUIRE n.metric_id IS UNIQUE;
-CREATE CONSTRAINT fee_rule_id_unique IF NOT EXISTS FOR (n:FeeRule) REQUIRE n.fee_rule_id IS UNIQUE;
+CREATE CONSTRAINT fee_id_unique IF NOT EXISTS FOR (n:FeeRule) REQUIRE n.fee_id IS UNIQUE;
 CREATE CONSTRAINT risk_id_unique IF NOT EXISTS FOR (n:RiskAttribute) REQUIRE n.risk_id IS UNIQUE;
 CREATE CONSTRAINT rule_id_unique IF NOT EXISTS FOR (n:ComplianceRule) REQUIRE n.rule_id IS UNIQUE;
 CREATE CONSTRAINT document_id_unique IF NOT EXISTS FOR (n:Document) REQUIRE n.document_id IS UNIQUE;

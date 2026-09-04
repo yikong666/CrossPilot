@@ -1,6 +1,6 @@
 rule_id,document_id
-rule_electronics_accessories_1,doc_1
-rule_electronics_accessories_2,doc_2
+rule_consumer_electronics_1,doc_1
+rule_consumer_electronics_2,doc_2
 rule_children_toys_1,doc_3
 rule_children_toys_2,doc_4
 rule_home_goods_1,doc_5
