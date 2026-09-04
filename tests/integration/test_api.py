@@ -113,6 +113,20 @@ class DisconnectingRequest:
         return True
 
 
+class SensitiveFailingEvents:
+    def __init__(self) -> None:
+        self.closed = False
+
+    def __aiter__(self) -> SensitiveFailingEvents:
+        return self
+
+    async def __anext__(self) -> SSEEvent:
+        raise RuntimeUnavailableError("llm_api_key=not-for-stream-output")
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
 def valid_request() -> dict[str, object]:
     return {
         "product": {
@@ -281,6 +295,35 @@ async def test_disconnect_closes_the_runtime_event_iterator() -> None:
 
     assert chunks == []
     assert closed is True
+
+
+@pytest.mark.asyncio
+async def test_stream_failure_hides_runtime_error_and_closes_event_iterator() -> None:
+    events = SensitiveFailingEvents()
+
+    chunks = [
+        chunk
+        async for chunk in _encode_events(
+            cast(Any, DisconnectingRequest()),
+            events,
+            trace_id="trace-1",
+            thread_id="thread-1",
+        )
+    ]
+
+    assert len(chunks) == 1
+    assert chunks[0].startswith("event: workflow_failed\n")
+    assert "llm_api_key=not-for-stream-output" not in chunks[0]
+    event = json.loads(chunks[0].split("\n", maxsplit=1)[1].removeprefix("data: "))
+    assert event["trace_id"] == "trace-1"
+    assert event["thread_id"] == "thread-1"
+    assert event["event_type"] == "workflow_failed"
+    assert event["message"] == (
+        "Analysis execution failed. Resume this thread after correcting the runtime error."
+    )
+    assert event["timestamp"]
+    assert event["payload"] == {}
+    assert events.closed is True
 
 
 def test_graph_rejects_runtime_data_without_edges() -> None:
