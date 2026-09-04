@@ -77,8 +77,8 @@ FEE_RULE_CYPHER = """
 MATCH (category:Category {category_id: $category})-[:USES_FEE_RULE]->(rule:FeeRule)
 WHERE rule.marketplace = 'amazon_us'
   AND rule.effective_date <= date()
-  AND (rule.min_weight_kg IS NULL OR rule.min_weight_kg <= $weight_kg)
-  AND (rule.max_weight_kg IS NULL OR $weight_kg < rule.max_weight_kg)
+  AND (rule.min_weight_kg IS NULL OR rule.min_weight_kg <= toFloat($weight_kg))
+  AND (rule.max_weight_kg IS NULL OR toFloat($weight_kg) < rule.max_weight_kg)
 RETURN rule.fee_id AS fee_id,
        rule.commission_rate AS commission_rate,
        rule.fba_fee_usd AS fba_fee_usd,
@@ -98,7 +98,7 @@ class FeeRuleRepository:
     async def get_rule(self, category: str, weight_kg: Decimal) -> FeeRule:
         rows = await self._read_client.execute_read(
             FEE_RULE_CYPHER,
-            {"category": category, "weight_kg": float(weight_kg)},
+            {"category": category, "weight_kg": str(weight_kg)},
         )
         if not rows:
             raise FeeRuleNotFoundError(

@@ -45,12 +45,36 @@ async def test_reads_one_matching_us_amazon_rule_with_parameterized_query() -> N
     assert rule.fba_fee_usd == Decimal("4.00")
     assert rule.fx_cny_per_usd == Decimal("7.00")
     assert rule.effective_date == date(2026, 9, 1)
-    assert client.params == {"category": "consumer_electronics", "weight_kg": 0.42}
-    assert isinstance(client.params["weight_kg"], float)
+    assert client.params == {"category": "consumer_electronics", "weight_kg": "0.42"}
+    assert isinstance(client.params["weight_kg"], str)
     assert client.cypher is not None
     assert "amazon_us" in client.cypher
     assert "$category" in client.cypher
     assert "$weight_kg" in client.cypher
+    assert client.cypher.count("toFloat($weight_kg)") == 2
+
+
+@pytest.mark.asyncio
+async def test_preserves_high_precision_weight_as_text_at_neo4j_boundary() -> None:
+    """Fails if Python converts a precise Decimal through a lossy float before Neo4j."""
+    high_precision_weight = Decimal("1.999999999999999999999999999")
+    client = RecordingReadClient(
+        [
+            {
+                "commission_rate": "0.15",
+                "fba_fee_usd": "4.00",
+                "fx_cny_per_usd": "7.00",
+                "fee_id": "precise-weight-rule",
+                "effective_date": "2026-09-01",
+            }
+        ]
+    )
+
+    await FeeRuleRepository(client).get_rule("consumer_electronics", high_precision_weight)
+
+    assert client.params is not None
+    assert client.params["weight_kg"] == "1.999999999999999999999999999"
+    assert isinstance(client.params["weight_kg"], str)
 
 
 @pytest.mark.asyncio
