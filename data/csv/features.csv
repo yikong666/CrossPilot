@@ -1,0 +1,16 @@
+feature_id,name,value
+feature_ea_cable,USB-C cable,USB-C cable
+feature_ea_charging,fast charging,fast charging
+feature_ea_wireless,wireless,wireless
+feature_ea_battery,rechargeable battery,rechargeable battery
+feature_ea_compact,compact,compact
+feature_ct_educational,educational,educational
+feature_ct_age,age guidance,age guidance
+feature_ct_material,non-toxic material,non-toxic material
+feature_ct_small_parts,small parts warning,small parts warning
+feature_ct_creative,creative play,creative play
+feature_hg_storage,storage,storage
+feature_hg_material,durable material,durable material
+feature_hg_load,load bearing,load bearing
+feature_hg_food,food contact,food contact
+feature_hg_easy_clean,easy clean,easy clean

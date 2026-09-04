@@ -1,0 +1,4 @@
+fee_rule_id,category_id,fee_id,marketplace,referral_rate,referral_fee_rate,commission_rate,fulfillment_fee,fba_fee,fba_fee_usd,fx_cny_per_usd,min_weight_kg,max_weight_kg,effective_date
+fee_consumer_electronics,consumer_electronics,fee_consumer_electronics,amazon_us,0.15,0.15,0.15,4.95,4.95,4.95,7.20,0.00,2.00,2026-01-01
+fee_children_toys,children_toys,fee_children_toys,amazon_us,0.15,0.15,0.15,4.95,4.95,4.95,7.20,0.00,2.00,2026-01-01
+fee_home_goods,home_goods,fee_home_goods,amazon_us,0.15,0.15,0.15,4.95,4.95,4.95,7.20,0.00,2.00,2026-01-01

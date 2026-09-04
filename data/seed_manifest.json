@@ -1,0 +1,45 @@
+{
+  "seed": 20260904,
+  "synthetic_data": true,
+  "csv_row_counts": {
+    "categories.csv": 3,
+    "brands.csv": 12,
+    "products.csv": 96,
+    "features.csv": 15,
+    "product_features.csv": 336,
+    "market_metrics.csv": 96,
+    "fee_rules.csv": 3,
+    "risk_attributes.csv": 9,
+    "product_risks.csv": 195,
+    "compliance_rules.csv": 6,
+    "documents.csv": 6,
+    "rule_documents.csv": 6,
+    "rule_categories.csv": 6,
+    "product_competitors.csv": 480
+  },
+  "node_expectations": {
+    "Category": 3,
+    "Brand": 12,
+    "Marketplace": 1,
+    "Product": 96,
+    "Feature": 15,
+    "MarketMetric": 96,
+    "FeeRule": 3,
+    "RiskAttribute": 9,
+    "ComplianceRule": 6,
+    "Document": 6
+  },
+  "relationship_expectations": {
+    "BELONGS_TO": 96,
+    "MADE_BY": 96,
+    "SOLD_ON": 96,
+    "HAS_FEATURE": 336,
+    "HAS_MARKET_METRIC": 96,
+    "USES_FEE_RULE": 3,
+    "HAS_RISK_ATTRIBUTE": 195,
+    "TRIGGERS": 12,
+    "REQUIRES_DOCUMENT": 6,
+    "APPLIES_TO": 6,
+    "COMPETES_WITH": 480
+  }
+}
