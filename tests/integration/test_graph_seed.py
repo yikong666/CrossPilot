@@ -286,7 +286,7 @@ def test_neo4j_availability_reraises_non_connectivity_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Configuration and authentication failures must not be hidden as an unavailable database."""
-    from neo4j.exceptions import ServiceUnavailable
+    from neo4j.exceptions import AuthError, ServiceUnavailable
 
     import scripts.seed_graph as seed_graph
 
@@ -327,9 +327,9 @@ def test_neo4j_availability_reraises_non_connectivity_errors(
     monkeypatch.setattr(
         seed_graph.GraphDatabase,
         "driver",
-        lambda *_args, **_kwargs: FailingDriver(RuntimeError("authentication failed")),
+        lambda *_args, **_kwargs: FailingDriver(AuthError("authentication failed")),
     )
-    with pytest.raises(RuntimeError, match="authentication failed"):
+    with pytest.raises(AuthError, match="authentication failed"):
         seed_graph.neo4j_is_available()
 
 
