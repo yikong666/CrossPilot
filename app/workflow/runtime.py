@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any, Protocol
@@ -10,6 +11,7 @@ from app.contracts.api import AnalysisRequest
 from app.contracts.events import SSEEvent
 
 GraphData = dict[str, list[dict[str, Any]]]
+logger = logging.getLogger(__name__)
 RUNTIME_UNAVAILABLE_DETAIL = (
     "Analysis service is unavailable. Configure the workflow runtime and retry."
 )
@@ -47,6 +49,7 @@ class LangGraphWorkflowRuntime:
     def __init__(self, graph: Any) -> None:
         self._graph = graph
         self._thread_trace_ids: dict[str, str] = {}
+        self._thread_status: dict[str, str] = {}
 
     def stream(
         self,
@@ -55,7 +58,14 @@ class LangGraphWorkflowRuntime:
         trace_id: str,
         thread_id: str,
     ) -> AsyncIterator[SSEEvent]:
+        if thread_id in self._thread_status:
+            return self._thread_failure(
+                trace_id=trace_id,
+                thread_id=thread_id,
+                message="该 thread_id 已存在；请使用 resume 接口继续原工作流。",
+            )
         self._thread_trace_ids[thread_id] = trace_id
+        self._thread_status[thread_id] = "active"
         initial_state = {
             "trace_id": trace_id,
             "thread_id": thread_id,
@@ -78,8 +88,20 @@ class LangGraphWorkflowRuntime:
         fields: dict[str, Any],
         trace_id: str,
     ) -> AsyncIterator[SSEEvent]:
-        if thread_id not in self._thread_trace_ids:
-            return self._unknown_thread(trace_id=trace_id, thread_id=thread_id)
+        status = self._thread_status.get(thread_id)
+        if status is None:
+            return self._thread_failure(
+                trace_id=trace_id,
+                thread_id=thread_id,
+                message="找不到可恢复的工作流。",
+            )
+        if status != "interrupted":
+            return self._thread_failure(
+                trace_id=trace_id,
+                thread_id=thread_id,
+                message="当前工作流不处于等待输入状态，无法 resume。",
+            )
+        self._thread_status[thread_id] = "active"
         return self._run(
             Command(resume=fields, update={"trace_id": trace_id}),
             trace_id=trace_id,
@@ -92,7 +114,12 @@ class LangGraphWorkflowRuntime:
         config = {"configurable": {"thread_id": thread_id}}
         try:
             snapshot = await self._graph.aget_state(config)
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "Graph evidence lookup failed thread_id=%s exception_type=%s",
+                thread_id,
+                type(exc).__name__,
+            )
             return None
         values = snapshot.values or {}
         node_ids: set[str] = set()
@@ -128,11 +155,16 @@ class LangGraphWorkflowRuntime:
                 stream_mode=["custom", "updates"],
             ):
                 if mode == "custom" and isinstance(chunk, SSEEvent):
+                    if chunk.event_type == "workflow_completed":
+                        self._thread_status[thread_id] = "completed"
+                    elif chunk.event_type == "workflow_failed":
+                        self._thread_status[thread_id] = "failed"
                     yield chunk
                 elif mode == "updates" and isinstance(chunk, dict) and "__interrupt__" in chunk:
                     interrupts = chunk["__interrupt__"]
                     value = interrupts[0].value if interrupts else {}
                     payload = value if isinstance(value, dict) else {}
+                    self._thread_status[thread_id] = "interrupted"
                     yield self._event(
                         trace_id,
                         thread_id,
@@ -140,7 +172,13 @@ class LangGraphWorkflowRuntime:
                         str(payload.get("follow_up_question") or "请补充必要信息。"),
                         payload,
                     )
-        except Exception:
+        except Exception as exc:
+            self._thread_status[thread_id] = "failed"
+            logger.warning(
+                "Workflow execution failed thread_id=%s node=graph exception_type=%s",
+                thread_id,
+                type(exc).__name__,
+            )
             yield self._event(
                 trace_id,
                 thread_id,
@@ -148,14 +186,14 @@ class LangGraphWorkflowRuntime:
                 "工作流执行失败，请稍后重试。",
             )
 
-    async def _unknown_thread(
-        self, *, trace_id: str, thread_id: str
+    async def _thread_failure(
+        self, *, trace_id: str, thread_id: str, message: str
     ) -> AsyncIterator[SSEEvent]:
         yield self._event(
             trace_id,
             thread_id,
             "workflow_failed",
-            "找不到可恢复的工作流。",
+            message,
         )
 
     @staticmethod

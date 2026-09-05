@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from typing import Protocol, TypeVar
 
@@ -26,7 +27,7 @@ class _PlannedTask(BaseModel):
 
 
 class _SupervisorOutput(BaseModel):
-    tasks: list[_PlannedTask] = Field(default_factory=list)
+    tasks: list[_PlannedTask]
     market_entry_requested: bool = False
 
 
@@ -89,7 +90,8 @@ class Supervisor:
                     "You are the CrossPilot supervisor. Return JSON matching the supplied schema. "
                     "Allowed agents are market, competitor, pricing, and compliance. "
                     "Do not perform analysis or query data. "
-                    f"{scope}"
+                    f"{scope}\nJSON Schema: "
+                    f"{json.dumps(_SupervisorOutput.model_json_schema(), ensure_ascii=False)}"
                 ),
             },
             {

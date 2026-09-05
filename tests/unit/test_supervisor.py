@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -8,6 +9,7 @@ import pytest
 from app.agents.supervisor import Supervisor
 from app.contracts import AgentName, AnalysisRequest, ProductInput
 from app.core.errors import StructuredOutputError
+from app.services.llm import LLMClient
 
 
 def _request(question: str) -> AnalysisRequest:
@@ -160,3 +162,57 @@ async def test_supervisor_replans_only_requested_gaps() -> None:
     )
 
     assert [task.agent for task in plan.tasks] == [AgentName.COMPLIANCE]
+
+
+class CapturingCompletions:
+    def __init__(self, contents: list[str]) -> None:
+        self._contents = iter(contents)
+        self.requests: list[dict[str, Any]] = []
+
+    async def create(self, **kwargs: Any) -> Any:
+        self.requests.append(kwargs)
+        return SimpleNamespace(
+            choices=[
+                SimpleNamespace(message=SimpleNamespace(content=next(self._contents)))
+            ]
+        )
+
+
+def _capturing_llm(
+    contents: list[str], *, retries: int = 0
+) -> tuple[LLMClient, CapturingCompletions]:
+    completions = CapturingCompletions(contents)
+    client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+    return (
+        LLMClient(
+            model="fake-model",
+            client=client,
+            max_parse_retries=retries,
+        ),
+        completions,
+    )
+
+
+@pytest.mark.asyncio
+async def test_supervisor_sends_actual_json_schema_to_llm_transport() -> None:
+    llm, completions = _capturing_llm(
+        ['{"tasks": [], "market_entry_requested": false}']
+    )
+
+    await Supervisor(llm).plan(_request("分析市场"))
+
+    prompt = "\n".join(
+        message["content"] for message in completions.requests[0]["messages"]
+    )
+    assert '"tasks"' in prompt
+    assert '"agent"' in prompt
+    assert '"market_entry_requested"' in prompt
+    assert '"required"' in prompt
+
+
+@pytest.mark.asyncio
+async def test_supervisor_rejects_missing_tasks_field_in_structured_output() -> None:
+    llm, _ = _capturing_llm(['{"market_entry_requested": false}'])
+
+    with pytest.raises(StructuredOutputError):
+        await Supervisor(llm).plan(_request("分析市场"))

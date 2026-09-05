@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from typing import Literal
 
@@ -45,6 +46,9 @@ class StrategyAgent:
         payload = {
             name: result.model_dump(mode="json") for name, result in results.items()
         }
+        schema_json = json.dumps(
+            StrategyRecommendation.model_json_schema(), ensure_ascii=False
+        )
         return await self._llm.generate_json(
             StrategyRecommendation,
             [
@@ -53,7 +57,9 @@ class StrategyAgent:
                     "content": (
                         "Synthesize a CrossPilot market-entry recommendation using only the "
                         "provided specialist results and evidence. Allowed decisions: enter, "
-                        "cautious, do_not_enter. Do not create a score or invent data."
+                        "cautious, do_not_enter. Do not create a score or invent data.\n"
+                        "JSON Schema: "
+                        f"{schema_json}"
                     ),
                 },
                 {

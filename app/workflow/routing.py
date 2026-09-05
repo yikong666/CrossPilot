@@ -8,7 +8,7 @@ from app.contracts.agents import AgentTask, ValidationDecision
 
 
 def dispatch_tasks(state: dict[str, Any]) -> list[Send] | str:
-    tasks: list[AgentTask] = state.get("tasks", [])
+    tasks: list[AgentTask] = state.get("dispatch_tasks", [])
     if not tasks:
         return "fail"
     return [
@@ -19,6 +19,8 @@ def dispatch_tasks(state: dict[str, Any]) -> list[Send] | str:
                 "request": state["request"],
                 "trace_id": state["trace_id"],
                 "thread_id": state["thread_id"],
+                "round_id": state["round_id"],
+                "round_size": len(tasks),
             },
         )
         for task in tasks

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import json
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -20,6 +23,8 @@ from app.contracts.events import SSEEvent
 from app.workflow.routing import dispatch_tasks, needs_strategy, route_after_validation
 from app.workflow.state import WorkflowState
 
+logger = logging.getLogger(__name__)
+
 
 class SpecialistAgent(Protocol):
     async def run(self, task: AgentTask, product: ProductInput) -> AgentResult: ...
@@ -37,6 +42,7 @@ class SupervisorService(Protocol):
 class ValidatorService(Protocol):
     async def validate(
         self,
+        request: AnalysisRequest,
         tasks: list[AgentTask],
         results: Mapping[str, AgentResult],
     ) -> ValidationDecision: ...
@@ -61,6 +67,38 @@ class WorkflowDependencies:
 class WorkflowGraphState(WorkflowState, total=False):
     task: AgentTask
     market_entry_requested: bool
+    dispatch_tasks: list[AgentTask]
+    round_id: int
+    round_size: int
+
+
+@dataclass
+class _BarrierEntry:
+    barrier: asyncio.Barrier
+    remaining: int
+
+
+class _StartCoordinator:
+    """Keep one graph round from completing before all dispatched nodes start."""
+
+    def __init__(self) -> None:
+        self._entries: dict[tuple[str, int], _BarrierEntry] = {}
+
+    async def wait(self, thread_id: str, round_id: int, round_size: int) -> None:
+        key = (thread_id, round_id)
+        entry = self._entries.get(key)
+        if entry is None:
+            entry = _BarrierEntry(asyncio.Barrier(round_size), round_size)
+            self._entries[key] = entry
+        try:
+            await entry.barrier.wait()
+        except BaseException:
+            await entry.barrier.abort()
+            raise
+        finally:
+            entry.remaining -= 1
+            if entry.remaining == 0:
+                self._entries.pop(key, None)
 
 
 def _timestamp() -> str:
@@ -85,13 +123,68 @@ def _event(
     )
 
 
+_ANSWER_FIELDS: dict[AgentName, tuple[str, ...]] = {
+    AgentName.MARKET: (
+        "demand_level",
+        "price_band",
+        "competition_level",
+        "sample_size",
+    ),
+    AgentName.COMPETITOR: ("competitors",),
+    AgentName.PRICING: (
+        "fixed_cost",
+        "variable_rate",
+        "profit",
+        "margin",
+        "break_even_price",
+        "target_price",
+        "assumptions",
+    ),
+    AgentName.COMPLIANCE: (
+        "available",
+        "missing",
+        "needs_confirmation",
+        "not_applicable",
+        "risk_alerts",
+        "disclaimer",
+    ),
+}
+
+
+def _format_specialist_answer(result: AgentResult) -> str:
+    fields = _ANSWER_FIELDS[result.agent]
+    details = [
+        f"{field}={json.dumps(result.data[field], ensure_ascii=False, default=str)}"
+        for field in fields
+        if field in result.data
+    ]
+    evidence = [record.summary for record in result.evidence if record.summary]
+    sections = [result.summary]
+    if details:
+        sections.append("结果：" + "；".join(details))
+    if evidence:
+        sections.append("依据：" + "；".join(evidence))
+    return " ".join(sections)
+
+
 def build_workflow(dependencies: WorkflowDependencies) -> Any:
     """Compile the bounded orchestration graph with an in-process checkpointer."""
+
+    start_coordinator = _StartCoordinator()
 
     async def supervisor_node(state: WorkflowGraphState) -> dict[str, Any]:
         validation = state.get("validation")
         gaps = validation.gaps if validation and validation.action == "replan" else None
         plan = await dependencies.supervisor.plan(state["request"], gaps=gaps)
+        round_id = state.get("replan_count", 0)
+        dispatch_plan = [
+            task.model_copy(update={"task_id": f"round-{round_id}-{task.task_id}"})
+            for task in plan.tasks
+        ]
+        original_tasks = state.get("tasks") or plan.tasks
+        market_entry_requested = state.get(
+            "market_entry_requested", plan.market_entry_requested
+        )
         writer = get_stream_writer()
         writer(_event(state, "intent_identified", "已识别分析意图。"))
         writer(
@@ -99,12 +192,14 @@ def build_workflow(dependencies: WorkflowDependencies) -> Any:
                 state,
                 "agents_selected",
                 "已选择所需专业 Agent。",
-                {"agents": [task.agent.value for task in plan.tasks]},
+                {"agents": [task.agent.value for task in dispatch_plan]},
             )
         )
         return {
-            "tasks": plan.tasks,
-            "market_entry_requested": plan.market_entry_requested,
+            "tasks": original_tasks,
+            "dispatch_tasks": dispatch_plan,
+            "market_entry_requested": market_entry_requested,
+            "round_id": round_id,
             "validation": None,
         }
 
@@ -119,10 +214,20 @@ def build_workflow(dependencies: WorkflowDependencies) -> Any:
                 {"agent": task.agent.value, "task_id": task.task_id},
             )
         )
+        await start_coordinator.wait(
+            state["thread_id"], state["round_id"], state["round_size"]
+        )
         try:
             agent = dependencies.agents[task.agent]
             result = await agent.run(task, state["request"].product)
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "Specialist execution failed thread_id=%s node=run_agent agent=%s "
+                "exception_type=%s",
+                state["thread_id"],
+                task.agent.value,
+                type(exc).__name__,
+            )
             result = AgentResult(
                 agent=task.agent,
                 status="failed",
@@ -145,7 +250,7 @@ def build_workflow(dependencies: WorkflowDependencies) -> Any:
 
     async def validate_node(state: WorkflowGraphState) -> dict[str, Any]:
         decision = await dependencies.validator.validate(
-            state["tasks"], state.get("agent_results", {})
+            state["request"], state["tasks"], state.get("agent_results", {})
         )
         replan_count = state.get("replan_count", 0)
         if decision.action == "replan":
@@ -195,7 +300,7 @@ def build_workflow(dependencies: WorkflowDependencies) -> Any:
             answer = recommendation.to_answer()
         else:
             selected = state["tasks"][0].agent.value
-            answer = state["agent_results"][selected].summary
+            answer = _format_specialist_answer(state["agent_results"][selected])
         writer = get_stream_writer()
         writer(_event(state, "answer_chunk", answer))
         writer(_event(state, "workflow_completed", "工作流已完成。"))
