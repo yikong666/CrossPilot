@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol
 
 from app.contracts.agents import AgentName, AgentResult, AgentTask
@@ -49,13 +50,14 @@ class MarketAgent:
             return self._failed("market_data_unavailable")
 
         aggregate = evidence.rows[0]
-        if not self._has_required_aggregates(aggregate):
+        if not self._has_valid_aggregates(aggregate):
             return self._failed("market_data_incomplete")
         try:
             competition_level = self._competition_level(
-                aggregate["brand_count"], aggregate["product_count"]
+                self._finite_decimal(aggregate["brand_count"]),
+                self._finite_decimal(aggregate["product_count"]),
             )
-        except (TypeError, ValueError, ZeroDivisionError):
+        except (InvalidOperation, TypeError, ValueError, ZeroDivisionError):
             return self._failed("market_data_incomplete")
 
         return AgentResult(
@@ -79,15 +81,39 @@ class MarketAgent:
         )
 
     @classmethod
-    def _has_required_aggregates(cls, aggregate: dict[str, Any]) -> bool:
-        return all(aggregate.get(field) is not None for field in cls._REQUIRED_AGGREGATION_FIELDS)
+    def _has_valid_aggregates(cls, aggregate: dict[str, Any]) -> bool:
+        if not all(aggregate.get(field) is not None for field in cls._REQUIRED_AGGREGATION_FIELDS):
+            return False
+        try:
+            sample_size = cls._finite_decimal(aggregate["sample_size"])
+            min_price = cls._finite_decimal(aggregate["min_price"])
+            max_price = cls._finite_decimal(aggregate["max_price"])
+            brand_count = cls._finite_decimal(aggregate["brand_count"])
+            product_count = cls._finite_decimal(aggregate["product_count"])
+        except (InvalidOperation, TypeError, ValueError):
+            return False
+        return (
+            sample_size > 0
+            and product_count > 0
+            and 0 <= brand_count <= product_count
+            and min_price >= 0
+            and max_price >= 0
+            and min_price <= max_price
+        )
 
     @staticmethod
-    def _competition_level(brand_count: Any, product_count: Any) -> str:
-        brand_share = float(brand_count) / float(product_count)
-        if brand_share >= 0.5:
+    def _finite_decimal(value: Any) -> Decimal:
+        numeric_value = Decimal(str(value))
+        if not numeric_value.is_finite():
+            raise ValueError("aggregation value must be finite")
+        return numeric_value
+
+    @staticmethod
+    def _competition_level(brand_count: Decimal, product_count: Decimal) -> str:
+        brand_share = brand_count / product_count
+        if brand_share >= Decimal("0.5"):
             return "fragmented"
-        if brand_share >= 0.25:
+        if brand_share >= Decimal("0.25"):
             return "balanced"
         return "concentrated"
 

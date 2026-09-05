@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import pytest
@@ -45,6 +46,19 @@ def market_evidence(rows: list[dict[str, Any]]) -> EvidenceRecord:
         params={"category": "consumer_electronics", "marketplace": "amazon_us"},
         rows=rows,
     )
+
+
+def valid_market_aggregate(**overrides: Any) -> dict[str, Any]:
+    aggregate: dict[str, Any] = {
+        "demand_level": "high",
+        "sample_size": 1200,
+        "min_price": 19.99,
+        "max_price": 39.99,
+        "brand_count": 6,
+        "product_count": 12,
+    }
+    aggregate.update(overrides)
+    return aggregate
 
 
 @pytest.mark.asyncio
@@ -129,6 +143,44 @@ async def test_market_agent_fails_when_product_count_cannot_support_competition_
             )
         )
     ).run(market_task(), product())
+
+    assert result.status == "failed"
+    assert result.data == {}
+    assert result.evidence == []
+    assert result.errors == ["market_data_incomplete"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "aggregate",
+    [
+        valid_market_aggregate(sample_size=0),
+        valid_market_aggregate(sample_size=-1),
+        valid_market_aggregate(sample_size=math.nan),
+        valid_market_aggregate(sample_size=math.inf),
+        valid_market_aggregate(product_count=-1),
+        valid_market_aggregate(product_count=math.nan),
+        valid_market_aggregate(product_count=math.inf),
+        valid_market_aggregate(brand_count=-1),
+        valid_market_aggregate(brand_count=13),
+        valid_market_aggregate(brand_count=math.nan),
+        valid_market_aggregate(brand_count=math.inf),
+        valid_market_aggregate(min_price=-0.01),
+        valid_market_aggregate(max_price=-0.01),
+        valid_market_aggregate(min_price=40, max_price=39),
+        valid_market_aggregate(min_price=math.nan),
+        valid_market_aggregate(max_price=math.inf),
+    ],
+)
+async def test_market_agent_rejects_semantically_invalid_aggregates(
+    aggregate: dict[str, Any],
+) -> None:
+    """Accepting impossible or non-finite aggregates would produce a false market assessment."""
+    from app.agents.market import MarketAgent
+
+    result = await MarketAgent(FakeQueryService(market_evidence([aggregate]))).run(
+        market_task(), product()
+    )
 
     assert result.status == "failed"
     assert result.data == {}
