@@ -129,7 +129,10 @@ _ANSWER_FIELDS: dict[AgentName, tuple[str, ...]] = {
     AgentName.MARKET: (
         "demand_level",
         "price_band",
+        "price_statistics",
+        "top_brand_share",
         "competition_level",
+        "competition_basis",
         "sample_size",
     ),
     AgentName.COMPETITOR: ("competitors",),
