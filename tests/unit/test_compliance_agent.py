@@ -112,3 +112,77 @@ async def test_compliance_agent_fails_for_graph_dependency_error() -> None:
 
     assert result.status == "failed"
     assert result.errors == ["compliance_query_failed"]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "rows",
+    [
+        [{"unexpected": "value"}],
+        [{}],
+        [{"document": "", "risk_alert": "   "}],
+        [{"required_document": " \t", "risk": None}],
+        [{"material": 123, "risk_rule": ["Unparsed rule"]}],
+        [{"applicability": "not_applicable"}],
+    ],
+)
+async def test_compliance_agent_rejects_rows_without_usable_rules(
+    rows: list[dict[str, object]],
+) -> None:
+    """Nonempty query rows cannot establish success without parsed materials or risks."""
+    evidence = _evidence(rows)
+
+    result = await ComplianceAgent(QueryService(evidence)).run(_task(), _product())
+
+    assert result.status == "failed"
+    assert result.errors == ["compliance_data_incomplete"]
+    assert result.evidence == [evidence]
+    assert result.data == {}
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("risk_key", ["risk_alert", "risk_warning", "risk", "risk_rule"])
+async def test_compliance_agent_accepts_explicit_risk_without_documents(risk_key: str) -> None:
+    """A supported nonblank risk rule remains useful when it has no material requirement."""
+    evidence = _evidence([{risk_key: "  Verify transport labeling with manufacturer.  "}])
+
+    result = await ComplianceAgent(QueryService(evidence)).run(_task(), _product())
+
+    assert result.status == "success"
+    assert result.data["risk_alerts"] == ["Verify transport labeling with manufacturer."]
+    for group in ("available", "missing", "needs_confirmation", "not_applicable"):
+        assert result.data[group] == []
+    assert result.evidence == [evidence]
+
+
+@pytest.mark.anyio
+async def test_compliance_agent_accepts_explicit_not_applicable_material() -> None:
+    """A graph-backed nonapplicability result must not be mistaken for empty evidence."""
+    evidence = _evidence([{"document_name": "FCC filing", "not_applicable": True}])
+
+    result = await ComplianceAgent(QueryService(evidence)).run(_task(), _product())
+
+    assert result.status == "success"
+    assert result.data["not_applicable"] == ["FCC filing"]
+    assert result.data["missing"] == []
+    assert result.evidence == [evidence]
+
+
+@pytest.mark.anyio
+async def test_compliance_agent_preserves_valid_material_among_unusable_rows() -> None:
+    """Unrecognized rows cannot erase usable evidence or create invented requirements."""
+    evidence = _evidence(
+        [
+            {"unexpected": "value"},
+            {"document": " ", "risk": ""},
+            {"material": "Tracking label", "applicability": "needs_confirmation"},
+        ]
+    )
+
+    result = await ComplianceAgent(QueryService(evidence)).run(_task(), _product())
+
+    assert result.status == "success"
+    assert result.data["needs_confirmation"] == ["Tracking label"]
+    for group in ("available", "missing", "not_applicable", "risk_alerts"):
+        assert result.data[group] == []
+    assert result.evidence == [evidence]
