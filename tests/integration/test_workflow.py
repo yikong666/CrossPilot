@@ -15,7 +15,7 @@ from app.agents.market import MarketAgent
 from app.agents.pricing import PricingAgent
 from app.agents.result_validator import ResultValidator
 from app.agents.strategy import StrategyAgent, StrategyRecommendation
-from app.agents.supervisor import SupervisorPlan
+from app.agents.supervisor import Supervisor, SupervisorPlan
 from app.contracts import (
     AgentName,
     AgentResult,
@@ -470,6 +470,58 @@ async def test_real_pricing_agent_workflow_interrupts_for_realized_fields_then_r
             thread_id="thread-real-pricing-input",
             fields={"selling_price_usd": "25"},
             trace_id="trace-real-pricing-resumed",
+        )
+    ]
+
+    assert first_events[-1].event_type == "input_required"
+    assert first_events[-1].payload["missing_fields"] == ["selling_price_usd"]
+    assert resumed_events[-1].event_type == "workflow_completed"
+    answer = next(
+        event.message for event in resumed_events if event.event_type == "answer_chunk"
+    )
+    assert 'profit="1.50"' in answer
+    assert 'margin="0.0600"' in answer
+
+
+@pytest.mark.asyncio
+async def test_real_supervisor_pricing_workflow_requires_price_for_profit_then_resumes() -> None:
+    """A planner that omits realized fields must not let PricingAgent invent current economics."""
+    product = _complete_product(
+        selling_price_usd=None,
+        fx_cny_per_usd=None,
+        fba_fee_usd=None,
+        commission_rate=None,
+    )
+    supervisor_llm, _ = _workflow_llm(
+        [
+            '{"tasks":[{"agent":"pricing","objective":"Calculate economics",'
+            '"required_fields":[]}],"market_entry_requested":false}'
+        ]
+    )
+    graph = build_workflow(
+        WorkflowDependencies(
+            supervisor=Supervisor(supervisor_llm),
+            validator=ResultValidator(CountingValidationLLM()),
+            strategy=RecordingStrategy(),
+            agents={AgentName.PRICING: PricingAgent(StaticFeeRepository())},
+        )
+    )
+    runtime = LangGraphWorkflowRuntime(graph)
+
+    first_events = [
+        event
+        async for event in runtime.stream(
+            AnalysisRequest(product=product, question="Calculate profit and margin"),
+            trace_id="trace-real-supervisor-pricing-input",
+            thread_id="thread-real-supervisor-pricing-input",
+        )
+    ]
+    resumed_events = [
+        event
+        async for event in runtime.resume(
+            thread_id="thread-real-supervisor-pricing-input",
+            fields={"selling_price_usd": "25"},
+            trace_id="trace-real-supervisor-pricing-resumed",
         )
     ]
 

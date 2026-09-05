@@ -37,9 +37,21 @@ class SupervisorPlan(BaseModel):
 
 
 _FALLBACK_KEYWORDS: dict[AgentName, tuple[str, ...]] = {
-    AgentName.PRICING: ("利润", "毛利", "售价", "成本"),
+    AgentName.PRICING: (
+        "利润",
+        "毛利",
+        "售价",
+        "成本",
+        "profit",
+        "margin",
+        "selling price",
+        "target price",
+        "cost",
+    ),
     AgentName.COMPLIANCE: ("认证", "检测", "材料", "合规"),
 }
+_PRICING_REALIZED_OUTPUT_FIELDS = ("profit", "margin")
+_PRICING_REALIZED_OUTPUT_KEYWORDS = ("利润", "毛利", "profit", "margin")
 
 
 class Supervisor:
@@ -61,6 +73,7 @@ class Supervisor:
         planned = list(output.tasks)
         if not gaps:
             planned = self._add_deterministic_fallbacks(planned, request.question)
+        planned = self._add_deterministic_pricing_requirements(planned, request.question)
         planned = self._deduplicate(planned)
         tasks = [
             AgentTask(
@@ -107,10 +120,12 @@ class Supervisor:
     def _add_deterministic_fallbacks(
         tasks: list[_PlannedTask], question: str
     ) -> list[_PlannedTask]:
+        normalized_question = question.casefold()
         selected = {task.agent for task in tasks}
         result = list(tasks)
         for agent, keywords in _FALLBACK_KEYWORDS.items():
-            if agent not in selected and any(keyword in question for keyword in keywords):
+            needs_fallback = any(keyword in normalized_question for keyword in keywords)
+            if agent not in selected and needs_fallback:
                 result.append(
                     _PlannedTask(
                         agent=agent,
@@ -118,6 +133,26 @@ class Supervisor:
                     )
                 )
         return result
+
+    @staticmethod
+    def _add_deterministic_pricing_requirements(
+        tasks: list[_PlannedTask], question: str
+    ) -> list[_PlannedTask]:
+        requires_realized_outputs = any(
+            keyword in question.casefold() for keyword in _PRICING_REALIZED_OUTPUT_KEYWORDS
+        )
+        enriched_tasks: list[_PlannedTask] = []
+        for task in tasks:
+            if task.agent is not AgentName.PRICING:
+                enriched_tasks.append(task)
+                continue
+            required_fields = list(dict.fromkeys(task.required_fields))
+            if requires_realized_outputs:
+                required_fields = list(
+                    dict.fromkeys([*required_fields, *_PRICING_REALIZED_OUTPUT_FIELDS])
+                )
+            enriched_tasks.append(task.model_copy(update={"required_fields": required_fields}))
+        return enriched_tasks
 
     @staticmethod
     def _deduplicate(tasks: list[_PlannedTask]) -> list[_PlannedTask]:

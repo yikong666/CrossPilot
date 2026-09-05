@@ -81,6 +81,68 @@ async def test_supervisor_adds_pricing_fallback_without_removing_model_market_ta
 
 
 @pytest.mark.asyncio
+async def test_supervisor_fallback_pricing_requires_realized_outputs_for_english_profit_margin(
+) -> None:
+    """A fallback pricing task must request a sale price when realized profit is asked."""
+    supervisor = Supervisor(
+        FakeStructuredLLM(
+            {
+                "tasks": [
+                    {
+                        "agent": "market",
+                        "objective": "Assess market",
+                        "required_fields": [],
+                    }
+                ],
+                "market_entry_requested": False,
+            }
+        )
+    )
+
+    plan = await supervisor.plan(_request("Assess market and calculate gross profit margin"))
+
+    pricing_task = next(task for task in plan.tasks if task.agent is AgentName.PRICING)
+    assert pricing_task.required_fields == ["profit", "margin"]
+
+
+@pytest.mark.asyncio
+async def test_supervisor_merges_realized_outputs_into_model_pricing_without_duplicates() -> None:
+    """Dropping model fields or duplicating profit would break PricingAgent input semantics."""
+    supervisor = Supervisor(
+        FakeStructuredLLM(
+            {
+                "tasks": [
+                    {
+                        "agent": "pricing",
+                        "objective": "Calculate the requested economics",
+                        "required_fields": ["target_price", "profit", "target_price"],
+                    }
+                ],
+                "market_entry_requested": False,
+            }
+        )
+    )
+
+    plan = await supervisor.plan(_request("请计算毛利率和利润"))
+
+    assert plan.tasks[0].required_fields == ["target_price", "profit", "margin"]
+
+
+@pytest.mark.asyncio
+async def test_supervisor_does_not_require_realized_outputs_for_target_price_or_cost_questions(
+) -> None:
+    """Target-price and cost questions can calculate a recommendation without a current price."""
+    supervisor = Supervisor(
+        FakeStructuredLLM({"tasks": [], "market_entry_requested": False})
+    )
+
+    plan = await supervisor.plan(_request("What target selling price fits this cost?"))
+
+    assert plan.tasks[0].agent is AgentName.PRICING
+    assert plan.tasks[0].required_fields == []
+
+
+@pytest.mark.asyncio
 async def test_supervisor_adds_compliance_fallback_to_model_selected_competitor() -> None:
     supervisor = Supervisor(
         FakeStructuredLLM(

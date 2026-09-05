@@ -245,10 +245,8 @@ async def test_parallel_specialist_results_merge_without_overwriting_other_agent
                         {
                             "demand_level": "medium",
                             "sample_size": 50,
-                            "min_price": 8,
-                            "max_price": 20,
-                            "brand_count": 3,
-                            "product_count": 10,
+                            "prices": ["8.00", "12.00", "20.00"],
+                            "brands": ["Acme", "Acme", "Nova"],
                         }
                     ],
                 )
@@ -259,6 +257,17 @@ async def test_parallel_specialist_results_merge_without_overwriting_other_agent
         _task(AgentName.PRICING), _product()
     )
 
+    assert market_result.status == "success"
+    assert market_result.data["sample_size"] == 50
+    assert market_result.data["price_statistics"] == {
+        "min_usd": "8.00",
+        "max_usd": "20.00",
+        "average_usd": "13.33",
+        "median_usd": "12.00",
+        "mainstream_min_usd": "10.00",
+        "mainstream_max_usd": "16.00",
+    }
+    assert market_result.data["top_brand_share"] == "0.6667"
     merged = merge_agent_results(
         {AgentName.MARKET: market_result},
         {AgentName.PRICING: pricing_result},
