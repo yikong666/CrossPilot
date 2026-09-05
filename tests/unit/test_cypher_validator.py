@@ -158,6 +158,33 @@ def test_accepts_count_distinct_bound_graph_variable(
     assert validated.return_fields == frozenset({"brand_count"})
 
 
+def test_rejects_count_distinct_without_an_explicit_alias(
+    validator: CypherValidator,
+) -> None:
+    with pytest.raises(
+        CypherValidationError,
+        match="Computed RETURN expressions require an explicit alias",
+    ):
+        validator.validate(
+            "MATCH (p:Product)-[:MADE_BY]->(b:Brand) "
+            "RETURN COUNT(DISTINCT b) LIMIT 1",
+            {},
+        )
+
+
+@pytest.mark.parametrize("function", ["SUM", "AVG", "COLLECT"])
+def test_rejects_distinct_graph_variable_for_non_count_functions(
+    validator: CypherValidator,
+    function: str,
+) -> None:
+    with pytest.raises(CypherValidationError, match="Unsupported RETURN expression"):
+        validator.validate(
+            "MATCH (p:Product)-[:MADE_BY]->(b:Brand) "
+            f"RETURN {function}(DISTINCT b) AS value LIMIT 1",
+            {},
+        )
+
+
 @pytest.mark.parametrize(
     "expression",
     [
