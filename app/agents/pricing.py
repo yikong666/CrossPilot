@@ -58,9 +58,19 @@ class PricingAgent:
                 )
             except FeeRuleNotFoundError as error:
                 missing_rule_fields = [
-                    field for field in error.fields if getattr(product, field) is None
+                    field
+                    for field in _RULE_BACKED_FIELDS
+                    if field in error.fields and getattr(product, field) is None
                 ]
-                return _need_input([*direct_missing, *missing_rule_fields])
+                fillable_fields = [*direct_missing, *missing_rule_fields]
+                if fillable_fields:
+                    return _need_input(fillable_fields)
+                return AgentResult(
+                    agent=AgentName.PRICING,
+                    status="failed",
+                    summary="Pricing could not use the applicable fee rule.",
+                    errors=["pricing_rule_unavailable"],
+                )
             except Exception:
                 return AgentResult(
                     agent=AgentName.PRICING,

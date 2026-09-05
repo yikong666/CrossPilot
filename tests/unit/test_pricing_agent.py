@@ -168,6 +168,40 @@ async def test_pricing_agent_only_requests_missing_rule_backed_field_after_rule_
 
 
 @pytest.mark.anyio
+async def test_pricing_agent_ignores_non_product_rule_error_fields() -> None:
+    """Treating effective_date as a ProductInput field must fail this test."""
+    product = _product(
+        fx_cny_per_usd=Decimal("7.20"),
+        commission_rate=Decimal("0.12"),
+    )
+    repository = RuleRepository(
+        error=FeeRuleNotFoundError(
+            "internal graph details",
+            ("effective_date", "fba_fee_usd"),
+        )
+    )
+
+    result = await PricingAgent(repository, Calculator(_calculation())).run(_task(), product)
+
+    assert result.status == "need_input"
+    assert result.missing_fields == ["fba_fee_usd"]
+
+
+@pytest.mark.anyio
+async def test_pricing_agent_fails_stably_when_rule_error_has_no_user_fillable_field() -> None:
+    """Requesting a non-ProductInput field or raising AttributeError must fail this test."""
+    repository = RuleRepository(
+        error=FeeRuleNotFoundError("internal graph details", ("effective_date",))
+    )
+
+    result = await PricingAgent(repository, Calculator(_calculation())).run(_task(), _product())
+
+    assert result.status == "failed"
+    assert result.errors == ["pricing_rule_unavailable"]
+    assert result.missing_fields == []
+
+
+@pytest.mark.anyio
 async def test_pricing_agent_returns_failed_when_fee_repository_is_unavailable() -> None:
     """Leaking repository implementation details to the user must fail this test."""
     result = await PricingAgent(
