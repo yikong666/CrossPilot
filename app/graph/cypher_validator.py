@@ -382,7 +382,24 @@ class _RestrictedQueryParser:
             arguments = self._split_top_level(start + 2, end - 1, ",")
             if not arguments:
                 raise CypherValidationError("RETURN function requires arguments")
-            kinds = [self._expression_kind(left, right) for left, right in arguments]
+            if function == "COUNT" and len(arguments) == 1:
+                argument_start, argument_end = arguments[0]
+                if (
+                    argument_end - argument_start == 2
+                    and self._is_word(argument_start, "DISTINCT")
+                    and self.tokens[argument_start + 1].kind == "IDENT"
+                    and (
+                        self.tokens[argument_start + 1].value in self.node_aliases
+                        or self.tokens[argument_start + 1].value in self.relationship_aliases
+                    )
+                ):
+                    kinds = ["graph"]
+                else:
+                    kinds = [
+                        self._expression_kind(left, right) for left, right in arguments
+                    ]
+            else:
+                kinds = [self._expression_kind(left, right) for left, right in arguments]
             if function in {"ELEMENTID", "LABELS", "TYPE"}:
                 if len(kinds) != 1 or kinds[0] != "graph":
                     raise CypherValidationError(f"{function} requires a graph variable")

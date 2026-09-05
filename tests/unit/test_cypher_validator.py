@@ -146,6 +146,41 @@ def test_returns_allowlisted_projection_fields(validator: CypherValidator) -> No
     assert validated.return_fields == frozenset({"product_id", "average_price"})
 
 
+def test_accepts_count_distinct_bound_graph_variable(
+    validator: CypherValidator,
+) -> None:
+    validated = validator.validate(
+        "MATCH (p:Product)-[:MADE_BY]->(b:Brand) "
+        "RETURN COUNT(DISTINCT b) AS brand_count LIMIT 1",
+        {},
+    )
+
+    assert validated.return_fields == frozenset({"brand_count"})
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "DISTINCT unknown_alias",
+        "DISTINCT b.name",
+        "DISTINCT b + p",
+        "DISTINCT $value",
+    ],
+)
+def test_rejects_count_distinct_other_than_a_bound_graph_variable(
+    validator: CypherValidator,
+    expression: str,
+) -> None:
+    params = {"value": "Brand A"} if "$value" in expression else {}
+
+    with pytest.raises(CypherValidationError, match="Unsupported RETURN expression"):
+        validator.validate(
+            "MATCH (p:Product)-[:MADE_BY]->(b:Brand) "
+            f"RETURN COUNT({expression}) AS brand_count LIMIT 1",
+            params,
+        )
+
+
 def test_rejects_unknown_property_for_label(validator: CypherValidator) -> None:
     with pytest.raises(CypherValidationError, match="Unknown property for Product: secret"):
         validator.validate("MATCH (p:Product) RETURN p.secret LIMIT 1", {})
