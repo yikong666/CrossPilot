@@ -58,7 +58,14 @@ class LangGraphWorkflowRuntime:
         trace_id: str,
         thread_id: str,
     ) -> AsyncIterator[SSEEvent]:
-        if thread_id in self._thread_status:
+        status = self._thread_status.get(thread_id)
+        if status == "cancelled":
+            return self._thread_failure(
+                trace_id=trace_id,
+                thread_id=thread_id,
+                message="该工作流已取消，不能继续使用相同 thread_id。",
+            )
+        if status is not None:
             return self._thread_failure(
                 trace_id=trace_id,
                 thread_id=thread_id,
@@ -74,6 +81,7 @@ class LangGraphWorkflowRuntime:
             "agent_results": {},
             "validation": None,
             "replan_count": 0,
+            "dispatch_sequence": 0,
             "final_answer": None,
             "graph_nodes": [],
             "graph_edges": [],
@@ -141,14 +149,14 @@ class LangGraphWorkflowRuntime:
         thread_id: str,
     ) -> AsyncIterator[SSEEvent]:
         config = {"configurable": {"thread_id": thread_id}}
-        if not isinstance(graph_input, Command):
-            yield self._event(
-                trace_id,
-                thread_id,
-                "workflow_started",
-                "工作流已启动。",
-            )
         try:
+            if not isinstance(graph_input, Command):
+                yield self._event(
+                    trace_id,
+                    thread_id,
+                    "workflow_started",
+                    "工作流已启动。",
+                )
             async for mode, chunk in self._graph.astream(
                 graph_input,
                 config,
@@ -185,6 +193,10 @@ class LangGraphWorkflowRuntime:
                 "workflow_failed",
                 "工作流执行失败，请稍后重试。",
             )
+        finally:
+            if self._thread_status.get(thread_id) == "active":
+                self._thread_status[thread_id] = "cancelled"
+                self._thread_trace_ids.pop(thread_id, None)
 
     async def _thread_failure(
         self, *, trace_id: str, thread_id: str, message: str

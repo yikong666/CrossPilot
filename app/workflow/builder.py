@@ -70,6 +70,7 @@ class WorkflowGraphState(WorkflowState, total=False):
     dispatch_tasks: list[AgentTask]
     round_id: int
     round_size: int
+    dispatch_sequence: int
 
 
 @dataclass
@@ -167,6 +168,29 @@ def _format_specialist_answer(result: AgentResult) -> str:
     return " ".join(sections)
 
 
+def _merge_task_obligations(
+    existing: list[AgentTask], additions: list[AgentTask]
+) -> list[AgentTask]:
+    """Preserve stable task identity while accumulating newly discovered duties."""
+
+    merged = list(existing)
+    positions = {task.agent: index for index, task in enumerate(merged)}
+    for addition in additions:
+        position = positions.get(addition.agent)
+        if position is None:
+            positions[addition.agent] = len(merged)
+            merged.append(addition)
+            continue
+        current = merged[position]
+        required_fields = list(
+            dict.fromkeys([*current.required_fields, *addition.required_fields])
+        )
+        merged[position] = current.model_copy(
+            update={"required_fields": required_fields}
+        )
+    return merged
+
+
 def build_workflow(dependencies: WorkflowDependencies) -> Any:
     """Compile the bounded orchestration graph with an in-process checkpointer."""
 
@@ -177,13 +201,19 @@ def build_workflow(dependencies: WorkflowDependencies) -> Any:
         gaps = validation.gaps if validation and validation.action == "replan" else None
         plan = await dependencies.supervisor.plan(state["request"], gaps=gaps)
         round_id = state.get("replan_count", 0)
+        dispatch_sequence = state.get("dispatch_sequence", 0) + 1
         dispatch_plan = [
-            task.model_copy(update={"task_id": f"round-{round_id}-{task.task_id}"})
+            task.model_copy(
+                update={"task_id": f"dispatch-{dispatch_sequence}-{task.task_id}"}
+            )
             for task in plan.tasks
         ]
-        original_tasks = state.get("tasks") or plan.tasks
-        market_entry_requested = state.get(
-            "market_entry_requested", plan.market_entry_requested
+        cumulative_tasks = _merge_task_obligations(
+            state.get("tasks", []), plan.tasks
+        )
+        market_entry_requested = (
+            state.get("market_entry_requested", False)
+            or plan.market_entry_requested
         )
         writer = get_stream_writer()
         writer(_event(state, "intent_identified", "已识别分析意图。"))
@@ -196,10 +226,11 @@ def build_workflow(dependencies: WorkflowDependencies) -> Any:
             )
         )
         return {
-            "tasks": original_tasks,
+            "tasks": cumulative_tasks,
             "dispatch_tasks": dispatch_plan,
             "market_entry_requested": market_entry_requested,
             "round_id": round_id,
+            "dispatch_sequence": dispatch_sequence,
             "validation": None,
         }
 

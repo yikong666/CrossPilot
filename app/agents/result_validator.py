@@ -9,7 +9,7 @@ from app.contracts.api import AnalysisRequest
 
 
 class ResultValidator:
-    """Apply non-negotiable coverage checks before optional semantic review."""
+    """Apply non-negotiable coverage checks before required semantic review."""
 
     def __init__(self, llm: StructuredLLM) -> None:
         self._llm = llm

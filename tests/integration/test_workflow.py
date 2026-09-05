@@ -23,6 +23,7 @@ from app.contracts import (
     AnalysisRequest,
     EvidenceRecord,
     ProductInput,
+    ValidationDecision,
 )
 from app.services.llm import LLMClient
 from app.services.pricing_calculator import PricingResult
@@ -519,6 +520,100 @@ class GapOnlySupervisor:
         )
 
 
+class ExpandingSupervisor:
+    """Add pricing only when semantic validation identifies that missing dimension."""
+
+    def __init__(self) -> None:
+        self.calls: list[list[str]] = []
+
+    async def plan(
+        self, request: AnalysisRequest, *, gaps: list[str] | None = None
+    ) -> SupervisorPlan:
+        del request
+        current_gaps = list(gaps or [])
+        self.calls.append(current_gaps)
+        if current_gaps:
+            return SupervisorPlan(
+                tasks=[
+                    AgentTask(
+                        task_id="pricing-gap",
+                        agent=AgentName.PRICING,
+                        objective="Fill the omitted pricing dimension",
+                        required_fields=["profit", "margin"],
+                    )
+                ]
+            )
+        return SupervisorPlan(
+            tasks=[
+                AgentTask(
+                    task_id="market-initial",
+                    agent=AgentName.MARKET,
+                    objective="Assess market demand",
+                    required_fields=["demand_level"],
+                )
+            ]
+        )
+
+
+class SemanticReplanThenPass:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def generate_json(self, schema: type[Any], messages: Any) -> Any:
+        del messages
+        self.calls += 1
+        if self.calls == 1:
+            return schema.model_validate(
+                {"action": "replan", "gaps": ["pricing dimension omitted"]}
+            )
+        return schema.model_validate({"action": "pass"})
+
+
+class SameAgentExpandingSupervisor:
+    async def plan(
+        self, request: AnalysisRequest, *, gaps: list[str] | None = None
+    ) -> SupervisorPlan:
+        del request
+        if gaps:
+            return SupervisorPlan(
+                tasks=[
+                    AgentTask(
+                        task_id="market-supplement",
+                        agent=AgentName.MARKET,
+                        objective="Supplement price band",
+                        required_fields=["demand_level", "price_band"],
+                    )
+                ]
+            )
+        return SupervisorPlan(
+            tasks=[
+                AgentTask(
+                    task_id="market-original",
+                    agent=AgentName.MARKET,
+                    objective="Assess market demand",
+                    required_fields=["demand_level"],
+                )
+            ]
+        )
+
+
+class CapturingCumulativeValidator:
+    def __init__(self) -> None:
+        self.tasks: list[list[AgentTask]] = []
+
+    async def validate(
+        self,
+        request: AnalysisRequest,
+        tasks: list[AgentTask],
+        results: Mapping[str, AgentResult],
+    ) -> ValidationDecision:
+        del request, results
+        self.tasks.append(tasks)
+        if len(self.tasks) == 1:
+            return ValidationDecision(action="replan", gaps=["price band omitted"])
+        return ValidationDecision(action="pass")
+
+
 class SequenceAgent:
     def __init__(self, results: list[AgentResult]) -> None:
         self.results = results
@@ -757,6 +852,42 @@ async def test_workflow_interrupts_for_input_and_resumes_same_thread(
 
 
 @pytest.mark.asyncio
+async def test_interrupt_resume_redispatch_uses_a_new_unique_dispatch_id() -> None:
+    task_ids: list[str] = []
+
+    class RecordingPricing(PricingNeedsSellingPrice):
+        async def run(self, task: AgentTask, product: ProductInput) -> AgentResult:
+            task_ids.append(task.task_id)
+            return await super().run(task, product)
+
+    runtime, _ = _runtime(
+        StaticSupervisor([AgentName.PRICING]),
+        {AgentName.PRICING: RecordingPricing()},
+    )
+    first = [
+        event
+        async for event in runtime.stream(
+            _analysis_request("Calculate profit", selling_price=None),
+            trace_id="trace-dispatch-first",
+            thread_id="thread-dispatch-unique",
+        )
+    ]
+    resumed = [
+        event
+        async for event in runtime.resume(
+            thread_id="thread-dispatch-unique",
+            fields={"selling_price_usd": "25"},
+            trace_id="trace-dispatch-resumed",
+        )
+    ]
+
+    assert first[-1].event_type == "input_required"
+    assert resumed[-1].event_type == "workflow_completed"
+    assert task_ids == ["dispatch-1-pricing-1", "dispatch-2-pricing-1"]
+    assert len(task_ids) == len(set(task_ids))
+
+
+@pytest.mark.asyncio
 async def test_workflow_replans_only_gaps_then_uses_supplemented_result() -> None:
     supervisor = StaticSupervisor([AgentName.MARKET])
     agent = SequenceAgent(
@@ -820,9 +951,139 @@ async def test_gap_only_replan_preserves_full_plan_and_strategy_inputs() -> None
     assert events[-1].event_type == "workflow_completed"
     assert market.calls == 1
     assert competitor.calls == 2
-    assert competitor.task_ids == ["round-0-competitor-1", "round-1-competitor-1"]
+    assert competitor.task_ids == [
+        "dispatch-1-competitor-1",
+        "dispatch-2-competitor-1",
+    ]
     assert strategy.calls == 1
     assert strategy.result_keys == [{"market", "competitor"}]
+
+
+@pytest.mark.asyncio
+async def test_semantic_replan_expands_cumulative_tasks_and_strategy_inputs() -> None:
+    supervisor = ExpandingSupervisor()
+    strategy = RecordingStrategy()
+    semantic_llm = SemanticReplanThenPass()
+    graph = build_workflow(
+        WorkflowDependencies(
+            supervisor=supervisor,
+            validator=ResultValidator(semantic_llm),
+            strategy=strategy,
+            agents={
+                AgentName.MARKET: SequenceAgent(
+                    [
+                        _success(AgentName.MARKET).model_copy(
+                            update={"data": {"demand_level": "high"}}
+                        )
+                    ]
+                ),
+                AgentName.PRICING: SequenceAgent(
+                    [
+                        _success(AgentName.PRICING).model_copy(
+                            update={"data": {"profit": "2.00", "margin": "0.08"}}
+                        )
+                    ]
+                ),
+            },
+        )
+    )
+    runtime = LangGraphWorkflowRuntime(graph)
+
+    events = [
+        event
+        async for event in runtime.stream(
+            _analysis_request("Assess demand and complete any omitted decision dimensions"),
+            trace_id="trace-expand-plan",
+            thread_id="thread-expand-plan",
+        )
+    ]
+
+    assert events[-1].event_type == "workflow_completed"
+    assert supervisor.calls == [[], ["pricing dimension omitted"]]
+    assert strategy.calls == 1
+    assert strategy.result_keys == [{"market", "pricing"}]
+
+
+@pytest.mark.asyncio
+async def test_failed_semantic_replan_task_cannot_be_overridden_by_semantic_pass() -> None:
+    supervisor = ExpandingSupervisor()
+    semantic_llm = SemanticReplanThenPass()
+    pricing = SequenceAgent(
+        [
+            AgentResult(
+                agent=AgentName.PRICING,
+                status="failed",
+                summary="Pricing failed",
+                errors=["calculator_unavailable"],
+            )
+        ]
+    )
+    graph = build_workflow(
+        WorkflowDependencies(
+            supervisor=supervisor,
+            validator=ResultValidator(semantic_llm),
+            strategy=RecordingStrategy(),
+            agents={
+                AgentName.MARKET: SequenceAgent(
+                    [
+                        _success(AgentName.MARKET).model_copy(
+                            update={"data": {"demand_level": "high"}}
+                        )
+                    ]
+                ),
+                AgentName.PRICING: pricing,
+            },
+        )
+    )
+    runtime = LangGraphWorkflowRuntime(graph)
+
+    events = [
+        event
+        async for event in runtime.stream(
+            _analysis_request("Assess demand and complete any omitted decision dimensions"),
+            trace_id="trace-expand-failed",
+            thread_id="thread-expand-failed",
+        )
+    ]
+
+    assert events[-1].event_type == "workflow_failed"
+    assert semantic_llm.calls == 1
+    assert pricing.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_same_agent_replan_unions_fields_and_preserves_obligation_identity() -> None:
+    validator = CapturingCumulativeValidator()
+    market = SequenceAgent(
+        [
+            _success(AgentName.MARKET).model_copy(
+                update={"data": {"demand_level": "high", "price_band": "20-30"}}
+            )
+        ]
+    )
+    graph = build_workflow(
+        WorkflowDependencies(
+            supervisor=SameAgentExpandingSupervisor(),
+            validator=validator,
+            strategy=RecordingStrategy(),
+            agents={AgentName.MARKET: market},
+        )
+    )
+    events = [
+        event
+        async for event in LangGraphWorkflowRuntime(graph).stream(
+            _analysis_request("Assess market"),
+            trace_id="trace-same-agent-obligation",
+            thread_id="thread-same-agent-obligation",
+        )
+    ]
+
+    cumulative = validator.tasks[1]
+    assert events[-1].event_type == "workflow_completed"
+    assert len(cumulative) == 1
+    assert cumulative[0].task_id == "market-original"
+    assert cumulative[0].objective == "Assess market demand"
+    assert cumulative[0].required_fields == ["demand_level", "price_band"]
 
 
 @pytest.mark.asyncio
@@ -1030,3 +1291,91 @@ async def test_resume_after_completed_thread_returns_explicit_failure() -> None:
 
     assert completed[-1].event_type == "workflow_completed"
     assert [event.event_type for event in resumed] == ["workflow_failed"]
+
+
+@pytest.mark.asyncio
+async def test_cancelled_consumer_marks_thread_terminal_and_does_not_affect_other_threads() -> None:
+    class CancelThenSucceedAgent:
+        def __init__(self) -> None:
+            self.started = asyncio.Event()
+            self.calls = 0
+
+        async def run(self, task: AgentTask, product: ProductInput) -> AgentResult:
+            del task, product
+            self.calls += 1
+            if self.calls == 1:
+                self.started.set()
+                await asyncio.Event().wait()
+            return _success(AgentName.MARKET)
+
+    agent = CancelThenSucceedAgent()
+    runtime, _ = _runtime(
+        StaticSupervisor([AgentName.MARKET]),
+        {AgentName.MARKET: agent},
+    )
+
+    async def consume_cancelled_thread() -> None:
+        async for _ in runtime.stream(
+            _analysis_request("Assess market"),
+            trace_id="trace-cancelled",
+            thread_id="thread-cancelled",
+        ):
+            pass
+
+    consumer = asyncio.create_task(consume_cancelled_thread())
+    await asyncio.wait_for(agent.started.wait(), timeout=1)
+    consumer.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await consumer
+
+    same_thread = [
+        event
+        async for event in runtime.stream(
+            _analysis_request("Retry cancelled thread"),
+            trace_id="trace-cancelled-retry",
+            thread_id="thread-cancelled",
+        )
+    ]
+    other_thread = [
+        event
+        async for event in runtime.stream(
+            _analysis_request("Assess another thread"),
+            trace_id="trace-other",
+            thread_id="thread-other",
+        )
+    ]
+
+    assert [event.event_type for event in same_thread] == ["workflow_failed"]
+    assert "取消" in same_thread[0].message
+    assert await runtime.get_graph("thread-cancelled") is None
+    assert other_thread[-1].event_type == "workflow_completed"
+    assert agent.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_closed_runtime_generator_marks_thread_cancelled_and_clears_context() -> None:
+    runtime, _ = _runtime(
+        StaticSupervisor([AgentName.MARKET]),
+        {AgentName.MARKET: SequenceAgent([_success(AgentName.MARKET)])},
+    )
+    execution = runtime.stream(
+        _analysis_request("Assess market"),
+        trace_id="trace-closed",
+        thread_id="thread-closed",
+    )
+
+    first = await anext(execution)
+    await execution.aclose()  # type: ignore[attr-defined]
+    same_thread = [
+        event
+        async for event in runtime.stream(
+            _analysis_request("Retry closed thread"),
+            trace_id="trace-closed-retry",
+            thread_id="thread-closed",
+        )
+    ]
+
+    assert first.event_type == "workflow_started"
+    assert [event.event_type for event in same_thread] == ["workflow_failed"]
+    assert "取消" in same_thread[0].message
+    assert await runtime.get_graph("thread-closed") is None
