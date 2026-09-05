@@ -10,11 +10,12 @@ from app.services.fee_rule_repository import FeeRule, FeeRuleNotFoundError
 from app.services.pricing_calculator import PricingResult
 
 
-def _task() -> AgentTask:
+def _task(*, required_fields: list[str] | None = None) -> AgentTask:
     return AgentTask(
         task_id="pricing-1",
         agent=AgentName.PRICING,
         objective="Calculate a viable Amazon US selling price.",
+        required_fields=required_fields or [],
     )
 
 
@@ -90,6 +91,80 @@ def _calculation() -> PricingResult:
             "target_margin": Decimal("0.2000"),
         },
     )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "required_fields",
+    [["profit"], ["margin"], ["profit", "margin"]],
+)
+async def test_pricing_agent_requires_selling_price_for_realized_outputs(
+    required_fields: list[str],
+) -> None:
+    """Ignoring realized-output requirements when selling price is absent must fail."""
+    calculator = Calculator(_calculation())
+
+    result = await PricingAgent(RuleRepository(), calculator).run(
+        _task(required_fields=required_fields),
+        _product(
+            selling_price_usd=None,
+            fx_cny_per_usd=Decimal("7.20"),
+            fba_fee_usd=Decimal("3.10"),
+            commission_rate=Decimal("0.12"),
+        ),
+    )
+
+    assert result.status == "need_input"
+    assert result.missing_fields == ["selling_price_usd"]
+    assert calculator.calls == []
+
+
+@pytest.mark.anyio
+async def test_pricing_agent_allows_target_only_task_without_selling_price() -> None:
+    """Making selling price mandatory for target-price calculations must fail this test."""
+    calculator = Calculator(_calculation())
+    product = _product(
+        selling_price_usd=None,
+        fx_cny_per_usd=Decimal("7.20"),
+        fba_fee_usd=Decimal("3.10"),
+        commission_rate=Decimal("0.12"),
+    )
+
+    result = await PricingAgent(RuleRepository(), calculator).run(
+        _task(required_fields=["break_even_price", "target_price"]),
+        product,
+    )
+
+    assert result.status == "success"
+    assert calculator.calls == [(product, None)]
+
+
+@pytest.mark.anyio
+async def test_pricing_agent_combines_task_direct_and_rule_inputs_in_stable_order() -> None:
+    """Dropping, duplicating, or reordering independent missing inputs must fail this test."""
+    product = _product(
+        selling_price_usd=None,
+        fx_cny_per_usd=Decimal("7.20"),
+        inbound_shipping_usd=None,
+        commission_rate=Decimal("0.12"),
+        target_margin=None,
+    )
+    repository = RuleRepository(
+        error=FeeRuleNotFoundError("internal graph details", ("fba_fee_usd",))
+    )
+
+    result = await PricingAgent(repository, Calculator(_calculation())).run(
+        _task(required_fields=["profit", "margin", "profit"]),
+        product,
+    )
+
+    assert result.status == "need_input"
+    assert result.missing_fields == [
+        "selling_price_usd",
+        "inbound_shipping_usd",
+        "target_margin",
+        "fba_fee_usd",
+    ]
 
 
 @pytest.mark.anyio
