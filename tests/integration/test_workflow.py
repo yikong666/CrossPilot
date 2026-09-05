@@ -847,7 +847,7 @@ async def test_workflow_interrupts_for_input_and_resumes_same_thread(
     assert first_events[-1].payload["missing_fields"] == ["selling_price_usd"]
     assert resumed_events[-1].event_type == "workflow_completed"
     assert {event.trace_id for event in resumed_events} == {"trace-resumed"}
-    assert supervisor.calls == [[], []]
+    assert supervisor.calls == [[]]
     assert "Deserializing unregistered type" not in caplog.text
 
 
@@ -1000,6 +1000,82 @@ async def test_semantic_replan_expands_cumulative_tasks_and_strategy_inputs() ->
 
     assert events[-1].event_type == "workflow_completed"
     assert supervisor.calls == [[], ["pricing dimension omitted"]]
+    assert strategy.calls == 1
+    assert strategy.result_keys == [{"market", "pricing"}]
+
+
+@pytest.mark.asyncio
+async def test_resume_redispatches_replanned_need_input_obligation() -> None:
+    class ReplannedPricingNeedsSellingPrice:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.task_ids: list[str] = []
+            self.selling_prices: list[Decimal | None] = []
+
+        async def run(self, task: AgentTask, product: ProductInput) -> AgentResult:
+            self.calls += 1
+            self.task_ids.append(task.task_id)
+            self.selling_prices.append(product.selling_price_usd)
+            if product.selling_price_usd is None:
+                return AgentResult(
+                    agent=AgentName.PRICING,
+                    status="need_input",
+                    summary="Selling price is required",
+                    missing_fields=["selling_price_usd"],
+                )
+            return _success(AgentName.PRICING).model_copy(
+                update={"data": {"profit": "2.00", "margin": "0.08"}}
+            )
+
+    supervisor = ExpandingSupervisor()
+    strategy = RecordingStrategy()
+    market = SequenceAgent(
+        [
+            _success(AgentName.MARKET).model_copy(
+                update={"data": {"demand_level": "high"}}
+            )
+        ]
+    )
+    pricing = ReplannedPricingNeedsSellingPrice()
+    graph = build_workflow(
+        WorkflowDependencies(
+            supervisor=supervisor,
+            validator=ResultValidator(SemanticReplanThenPass()),
+            strategy=strategy,
+            agents={AgentName.MARKET: market, AgentName.PRICING: pricing},
+        )
+    )
+    runtime = LangGraphWorkflowRuntime(graph)
+
+    first_events = [
+        event
+        async for event in runtime.stream(
+            _analysis_request(
+                "Assess demand and complete any omitted decision dimensions",
+                selling_price=None,
+            ),
+            trace_id="trace-expand-input",
+            thread_id="thread-expand-input",
+        )
+    ]
+    resumed_events = [
+        event
+        async for event in runtime.resume(
+            thread_id="thread-expand-input",
+            fields={"selling_price_usd": "25"},
+            trace_id="trace-expand-input-resumed",
+        )
+    ]
+
+    assert first_events[-1].event_type == "input_required"
+    assert resumed_events[-1].event_type == "workflow_completed"
+    assert "input_required" not in [event.event_type for event in resumed_events]
+    assert supervisor.calls == [[], ["pricing dimension omitted"]]
+    assert market.calls == 1
+    assert pricing.calls == 2
+    assert pricing.selling_prices == [None, Decimal("25")]
+    assert pricing.task_ids == ["dispatch-2-pricing-gap", "dispatch-3-pricing-gap"]
+    assert len(pricing.task_ids) == len(set(pricing.task_ids))
     assert strategy.calls == 1
     assert strategy.result_keys == [{"market", "pricing"}]
 

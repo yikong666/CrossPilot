@@ -68,6 +68,7 @@ class WorkflowGraphState(WorkflowState, total=False):
     task: AgentTask
     market_entry_requested: bool
     dispatch_tasks: list[AgentTask]
+    pending_input_tasks: list[AgentTask]
     round_id: int
     round_size: int
     dispatch_sequence: int
@@ -199,21 +200,28 @@ def build_workflow(dependencies: WorkflowDependencies) -> Any:
     async def supervisor_node(state: WorkflowGraphState) -> dict[str, Any]:
         validation = state.get("validation")
         gaps = validation.gaps if validation and validation.action == "replan" else None
-        plan = await dependencies.supervisor.plan(state["request"], gaps=gaps)
+        pending_input_tasks = state.get("pending_input_tasks", [])
+        if pending_input_tasks and validation is None:
+            plan_tasks = pending_input_tasks
+            plan_market_entry_requested = False
+        else:
+            plan = await dependencies.supervisor.plan(state["request"], gaps=gaps)
+            plan_tasks = plan.tasks
+            plan_market_entry_requested = plan.market_entry_requested
         round_id = state.get("replan_count", 0)
         dispatch_sequence = state.get("dispatch_sequence", 0) + 1
         dispatch_plan = [
             task.model_copy(
                 update={"task_id": f"dispatch-{dispatch_sequence}-{task.task_id}"}
             )
-            for task in plan.tasks
+            for task in plan_tasks
         ]
         cumulative_tasks = _merge_task_obligations(
-            state.get("tasks", []), plan.tasks
+            state.get("tasks", []), plan_tasks
         )
         market_entry_requested = (
             state.get("market_entry_requested", False)
-            or plan.market_entry_requested
+            or plan_market_entry_requested
         )
         writer = get_stream_writer()
         writer(_event(state, "intent_identified", "已识别分析意图。"))
@@ -232,6 +240,7 @@ def build_workflow(dependencies: WorkflowDependencies) -> Any:
             "round_id": round_id,
             "dispatch_sequence": dispatch_sequence,
             "validation": None,
+            "pending_input_tasks": [],
         }
 
     async def run_agent_node(state: WorkflowGraphState) -> dict[str, Any]:
@@ -280,8 +289,9 @@ def build_workflow(dependencies: WorkflowDependencies) -> Any:
         return {"agent_results": {task.agent.value: result}}
 
     async def validate_node(state: WorkflowGraphState) -> dict[str, Any]:
+        results = state.get("agent_results", {})
         decision = await dependencies.validator.validate(
-            state["request"], state["tasks"], state.get("agent_results", {})
+            state["request"], state["tasks"], results
         )
         replan_count = state.get("replan_count", 0)
         if decision.action == "replan":
@@ -300,7 +310,21 @@ def build_workflow(dependencies: WorkflowDependencies) -> Any:
                 {"action": decision.action},
             )
         )
-        return {"validation": decision, "replan_count": replan_count}
+        pending_input_tasks = (
+            [
+                task
+                for task in state["tasks"]
+                if (result := results.get(task.agent.value)) is not None
+                and result.status == "need_input"
+            ]
+            if decision.action == "need_input"
+            else []
+        )
+        return {
+            "validation": decision,
+            "replan_count": replan_count,
+            "pending_input_tasks": pending_input_tasks,
+        }
 
     def request_input_node(state: WorkflowGraphState) -> dict[str, Any]:
         validation = cast(ValidationDecision, state["validation"])
