@@ -511,7 +511,7 @@ async def test_real_supervisor_pricing_workflow_requires_price_for_profit_then_r
     first_events = [
         event
         async for event in runtime.stream(
-            AnalysisRequest(product=product, question="Calculate profit and margin"),
+            AnalysisRequest(product=product, question="Calculate current profit and margin"),
             trace_id="trace-real-supervisor-pricing-input",
             thread_id="thread-real-supervisor-pricing-input",
         )
@@ -531,6 +531,112 @@ async def test_real_supervisor_pricing_workflow_requires_price_for_profit_then_r
     answer = next(
         event.message for event in resumed_events if event.event_type == "answer_chunk"
     )
+    assert 'profit="1.50"' in answer
+    assert 'margin="0.0600"' in answer
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "question",
+    [
+        "把目标利润率改成30%，重新算建议售价",
+        "What selling price achieves a target margin of 30%?",
+    ],
+)
+async def test_real_supervisor_target_pricing_completes_without_current_selling_price(
+    question: str,
+) -> None:
+    """Target-price planning uses complete costs and a target margin, not a current price."""
+    product = _complete_product(
+        selling_price_usd=None,
+        fx_cny_per_usd=None,
+        fba_fee_usd=None,
+        commission_rate=None,
+        target_margin="0.30",
+    )
+    supervisor_llm, _ = _workflow_llm(
+        [
+            '{"tasks":[{"agent":"pricing","objective":"Recommend target price",'
+            '"required_fields":["target_price"]}],"market_entry_requested":false}'
+        ]
+    )
+    graph = build_workflow(
+        WorkflowDependencies(
+            supervisor=Supervisor(supervisor_llm),
+            validator=ResultValidator(CountingValidationLLM()),
+            strategy=RecordingStrategy(),
+            agents={AgentName.PRICING: PricingAgent(StaticFeeRepository())},
+        )
+    )
+    runtime = LangGraphWorkflowRuntime(graph)
+
+    events = [
+        event
+        async for event in runtime.stream(
+            AnalysisRequest(product=product, question=question),
+            trace_id=f"trace-target-price-{question[:2]}",
+            thread_id=f"thread-target-price-{question[:2]}",
+        )
+    ]
+
+    assert events[-1].event_type == "workflow_completed"
+    answer = next(event.message for event in events if event.event_type == "answer_chunk")
+    assert 'target_price="40.00"' in answer
+
+
+@pytest.mark.asyncio
+async def test_real_supervisor_mixed_target_and_current_profit_resumes_with_both_outputs() -> None:
+    """Mixed target/current economics retain target_price while requiring a current sale price."""
+    product = _complete_product(
+        selling_price_usd=None,
+        fx_cny_per_usd=None,
+        fba_fee_usd=None,
+        commission_rate=None,
+        target_margin="0.30",
+    )
+    supervisor_llm, _ = _workflow_llm(
+        [
+            '{"tasks":[{"agent":"pricing","objective":"Calculate target and current economics",'
+            '"required_fields":["target_price"]}],"market_entry_requested":false}'
+        ]
+    )
+    graph = build_workflow(
+        WorkflowDependencies(
+            supervisor=Supervisor(supervisor_llm),
+            validator=ResultValidator(CountingValidationLLM()),
+            strategy=RecordingStrategy(),
+            agents={AgentName.PRICING: PricingAgent(StaticFeeRepository())},
+        )
+    )
+    runtime = LangGraphWorkflowRuntime(graph)
+
+    first_events = [
+        event
+        async for event in runtime.stream(
+            AnalysisRequest(
+                product=product,
+                question="Calculate a target price and current profit margin",
+            ),
+            trace_id="trace-mixed-pricing-input",
+            thread_id="thread-mixed-pricing-input",
+        )
+    ]
+    resumed_events = [
+        event
+        async for event in runtime.resume(
+            thread_id="thread-mixed-pricing-input",
+            fields={"selling_price_usd": "25"},
+            trace_id="trace-mixed-pricing-resumed",
+        )
+    ]
+
+    assert first_events[-1].event_type == "input_required"
+    assert first_events[-1].payload["missing_fields"] == ["selling_price_usd"]
+    assert resumed_events[-1].event_type == "workflow_completed"
+    answer = next(
+        event.message for event in resumed_events if event.event_type == "answer_chunk"
+    )
+    assert 'target_price="40.00"' in answer
     assert 'profit="1.50"' in answer
     assert 'margin="0.0600"' in answer
 

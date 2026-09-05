@@ -52,6 +52,30 @@ _FALLBACK_KEYWORDS: dict[AgentName, tuple[str, ...]] = {
 }
 _PRICING_REALIZED_OUTPUT_FIELDS = ("profit", "margin")
 _PRICING_REALIZED_OUTPUT_KEYWORDS = ("利润", "毛利", "profit", "margin")
+_PRICING_TARGET_KEYWORDS = (
+    "目标利润率",
+    "目标毛利率",
+    "目标售价",
+    "建议售价",
+    "推荐售价",
+    "target margin",
+    "target profit",
+    "target price",
+)
+_PRICING_CURRENT_OUTPUT_KEYWORDS = (
+    "实际利润",
+    "当前利润",
+    "实际毛利",
+    "当前毛利",
+    "actual profit",
+    "current profit",
+    "actual margin",
+    "current margin",
+    "actual gross profit",
+    "current gross profit",
+    "actual gross margin",
+    "current gross margin",
+)
 
 
 class Supervisor:
@@ -138,9 +162,7 @@ class Supervisor:
     def _add_deterministic_pricing_requirements(
         tasks: list[_PlannedTask], question: str
     ) -> list[_PlannedTask]:
-        requires_realized_outputs = any(
-            keyword in question.casefold() for keyword in _PRICING_REALIZED_OUTPUT_KEYWORDS
-        )
+        requires_realized_outputs = Supervisor._requires_realized_pricing_outputs(question)
         enriched_tasks: list[_PlannedTask] = []
         for task in tasks:
             if task.agent is not AgentName.PRICING:
@@ -153,6 +175,22 @@ class Supervisor:
                 )
             enriched_tasks.append(task.model_copy(update={"required_fields": required_fields}))
         return enriched_tasks
+
+    @staticmethod
+    def _requires_realized_pricing_outputs(question: str) -> bool:
+        normalized_question = question.casefold()
+        mentions_realized_output = any(
+            keyword in normalized_question for keyword in _PRICING_REALIZED_OUTPUT_KEYWORDS
+        )
+        if not mentions_realized_output:
+            return False
+        is_target_pricing_request = any(
+            keyword in normalized_question for keyword in _PRICING_TARGET_KEYWORDS
+        )
+        asks_for_current_output = any(
+            keyword in normalized_question for keyword in _PRICING_CURRENT_OUTPUT_KEYWORDS
+        )
+        return asks_for_current_output or not is_target_pricing_request
 
     @staticmethod
     def _deduplicate(tasks: list[_PlannedTask]) -> list[_PlannedTask]:
