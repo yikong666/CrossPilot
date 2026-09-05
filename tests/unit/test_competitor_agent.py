@@ -137,6 +137,19 @@ async def test_returns_failed_when_competitor_row_is_missing_required_field() ->
 
 
 @pytest.mark.asyncio
+async def test_returns_failed_when_similarity_is_not_numeric() -> None:
+    row = _row("p-invalid-similarity", similarity=0.9)
+    row["similarity"] = "high"
+    evidence = _evidence([row])
+
+    result = await CompetitorAgent(FakeQueryService(evidence)).run(_task(), _product())
+
+    assert result.status == "failed"
+    assert result.errors == ["competitor_data_incomplete"]
+    assert result.evidence == [evidence]
+
+
+@pytest.mark.asyncio
 async def test_returns_failed_when_query_service_raises() -> None:
     result = await CompetitorAgent(FakeQueryService(RuntimeError("network offline"))).run(
         _task(), _product()

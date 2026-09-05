@@ -92,7 +92,7 @@ class CompetitorAgent:
     def _is_complete(cls, row: Mapping[str, Any]) -> bool:
         return (
             all(cls._has_value(row.get(field)) for field in cls._OUTPUT_FIELDS)
-            and cls._has_value(row.get("similarity"))
+            and cls._is_numeric_similarity(row.get("similarity"))
         )
 
     @staticmethod
@@ -107,11 +107,11 @@ class CompetitorAgent:
 
     @staticmethod
     def _numeric_score(value: Any) -> float:
-        if isinstance(value, bool):
-            return 0.0
-        if isinstance(value, (int, float)):
-            return float(value)
-        return 0.0
+        return float(value)
+
+    @staticmethod
+    def _is_numeric_similarity(value: Any) -> bool:
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
 
     @classmethod
     def _to_output(cls, row: Mapping[str, Any]) -> dict[str, Any]:
