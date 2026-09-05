@@ -51,6 +51,14 @@ class ComplianceAgent:
             )
 
         data: dict[str, Any] = _group_requirements(evidence.rows, product.provided_documents)
+        if not any(data.values()):
+            return AgentResult(
+                agent=AgentName.COMPLIANCE,
+                status="failed",
+                summary="Graph rows contain no usable compliance materials or risk rules.",
+                evidence=[evidence],
+                errors=["compliance_data_incomplete"],
+            )
         data["disclaimer"] = _DISCLAIMER
         return AgentResult(
             agent=AgentName.COMPLIANCE,
