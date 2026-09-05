@@ -150,6 +150,66 @@ async def test_returns_failed_when_similarity_is_not_numeric() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("similarity", [float("nan"), float("inf"), float("-inf")])
+async def test_returns_failed_when_similarity_is_not_finite(similarity: float) -> None:
+    evidence = _evidence([_row("p-invalid-similarity", similarity=similarity)])
+
+    result = await CompetitorAgent(FakeQueryService(evidence)).run(_task(), _product())
+
+    assert result.status == "failed"
+    assert result.errors == ["competitor_data_incomplete"]
+    assert result.evidence == [evidence]
+
+
+@pytest.mark.asyncio
+async def test_keeps_complete_competitors_when_one_candidate_is_incomplete() -> None:
+    incomplete = _row("p-incomplete", similarity=0.99)
+    del incomplete["bsr"]
+    evidence = _evidence(
+        [
+            _row("p-1", similarity=0.95),
+            _row("p-2", similarity=0.90),
+            _row("p-3", similarity=0.85),
+            _row("p-4", similarity=0.80),
+            _row("p-5", similarity=0.75),
+            incomplete,
+        ]
+    )
+
+    result = await CompetitorAgent(FakeQueryService(evidence)).run(_task(), _product())
+
+    assert result.status == "success"
+    assert [item["product_id"] for item in result.data["competitors"]] == [
+        "p-1",
+        "p-2",
+        "p-3",
+        "p-4",
+        "p-5",
+    ]
+    assert result.evidence == [evidence]
+
+
+@pytest.mark.asyncio
+async def test_uses_completeness_then_product_id_when_similarity_ties() -> None:
+    evidence = _evidence(
+        [
+            _row("p-low-completeness", similarity=0.8, selling_points=[], difference_summary=""),
+            _row("p-z", similarity=0.8),
+            _row("p-a", similarity=0.8),
+        ]
+    )
+
+    result = await CompetitorAgent(FakeQueryService(evidence)).run(_task(), _product())
+
+    assert result.status == "success"
+    assert [item["product_id"] for item in result.data["competitors"]] == [
+        "p-a",
+        "p-z",
+        "p-low-completeness",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_returns_failed_when_query_service_raises() -> None:
     result = await CompetitorAgent(FakeQueryService(RuntimeError("network offline"))).run(
         _task(), _product()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from typing import Any, Protocol
 
@@ -61,7 +62,10 @@ class CompetitorAgent:
         if not candidates:
             return self._failed_not_found(evidence)
 
-        if any(not self._is_complete(row) for row in candidates):
+        comparable_candidates = [
+            row for row in candidates if self._is_outputtable_candidate(row)
+        ]
+        if not comparable_candidates:
             return AgentResult(
                 agent=AgentName.COMPETITOR,
                 status="failed",
@@ -70,7 +74,7 @@ class CompetitorAgent:
                 errors=["competitor_data_incomplete"],
             )
 
-        ordered = sorted(candidates, key=self._sort_key)[:5]
+        ordered = sorted(comparable_candidates, key=self._sort_key)[:5]
         competitors = [self._to_output(row) for row in ordered]
         return AgentResult(
             agent=AgentName.COMPETITOR,
@@ -89,11 +93,11 @@ class CompetitorAgent:
         )
 
     @classmethod
-    def _is_complete(cls, row: Mapping[str, Any]) -> bool:
-        return (
-            all(cls._has_value(row.get(field)) for field in cls._OUTPUT_FIELDS)
-            and cls._is_numeric_similarity(row.get("similarity"))
+    def _is_outputtable_candidate(cls, row: Mapping[str, Any]) -> bool:
+        has_output_fields = all(
+            field in row and row[field] is not None for field in cls._OUTPUT_FIELDS
         )
+        return has_output_fields and cls._is_numeric_similarity(row.get("similarity"))
 
     @staticmethod
     def _has_value(value: Any) -> bool:
@@ -111,7 +115,11 @@ class CompetitorAgent:
 
     @staticmethod
     def _is_numeric_similarity(value: Any) -> bool:
-        return isinstance(value, (int, float)) and not isinstance(value, bool)
+        return (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(value)
+        )
 
     @classmethod
     def _to_output(cls, row: Mapping[str, Any]) -> dict[str, Any]:
