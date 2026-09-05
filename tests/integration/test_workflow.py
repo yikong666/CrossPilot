@@ -339,6 +339,16 @@ class UnusedFeeRepository:
         raise AssertionError(f"unexpected fee rule query: {category} {weight_kg}")
 
 
+class StaticFeeRepository:
+    async def get_rule(self, category: str, weight_kg: Decimal) -> Any:
+        del category, weight_kg
+        return SimpleNamespace(
+            fx_cny_per_usd=Decimal("7"),
+            fba_fee_usd=Decimal("4"),
+            commission_rate=Decimal("0.15"),
+        )
+
+
 class StaticPricingCalculator:
     def __call__(self, product: ProductInput, fee_rule: Any) -> PricingResult:
         del product, fee_rule
@@ -407,10 +417,8 @@ async def test_market_answer_contains_real_demand_price_band_and_sample_fields()
             {
                 "demand_level": "high",
                 "sample_size": 36,
-                "min_price": "19.99",
-                "max_price": "39.99",
-                "brand_count": 12,
-                "product_count": 36,
+                "prices": ["19.99", "24.99", "29.99", "39.99"],
+                "brands": ["Acme", "Acme", "Nova", "Orbit"],
             }
         ],
     )
@@ -420,8 +428,88 @@ async def test_market_answer_contains_real_demand_price_band_and_sample_fields()
         _complete_product(),
     )
 
-    assert all(value in answer for value in ["high", "19.99", "39.99", "36"])
+    assert all(value in answer for value in ["high", "23.74", "32.49", "36"])
+    assert all(value in answer for value in ["average_usd", "median_usd", "min_usd", "max_usd"])
+    assert all(value in answer for value in ["mainstream_min_usd", "mainstream_max_usd"])
+    assert all(value in answer for value in ["0.5000", "concentrated"])
     assert "Synthetic category aggregation" in answer
+
+
+@pytest.mark.asyncio
+async def test_real_pricing_agent_workflow_interrupts_for_realized_fields_then_resumes() -> None:
+    product = _complete_product(
+        selling_price_usd=None,
+        fx_cny_per_usd=None,
+        fba_fee_usd=None,
+        commission_rate=None,
+    )
+    supervisor = StaticSupervisor(
+        [AgentName.PRICING], required_fields=["profit", "margin"]
+    )
+    graph = build_workflow(
+        WorkflowDependencies(
+            supervisor=supervisor,
+            validator=ResultValidator(CountingValidationLLM()),
+            strategy=RecordingStrategy(),
+            agents={AgentName.PRICING: PricingAgent(StaticFeeRepository())},
+        )
+    )
+    runtime = LangGraphWorkflowRuntime(graph)
+
+    first_events = [
+        event
+        async for event in runtime.stream(
+            AnalysisRequest(product=product, question="Calculate profit and margin"),
+            trace_id="trace-real-pricing-input",
+            thread_id="thread-real-pricing-input",
+        )
+    ]
+    resumed_events = [
+        event
+        async for event in runtime.resume(
+            thread_id="thread-real-pricing-input",
+            fields={"selling_price_usd": "25"},
+            trace_id="trace-real-pricing-resumed",
+        )
+    ]
+
+    assert first_events[-1].event_type == "input_required"
+    assert first_events[-1].payload["missing_fields"] == ["selling_price_usd"]
+    assert resumed_events[-1].event_type == "workflow_completed"
+    answer = next(
+        event.message for event in resumed_events if event.event_type == "answer_chunk"
+    )
+    assert 'profit="1.50"' in answer
+    assert 'margin="0.0600"' in answer
+
+
+@pytest.mark.asyncio
+async def test_real_compliance_agent_malformed_nonempty_evidence_hits_validator_guard() -> None:
+    malformed = EvidenceRecord(
+        source_type="neo4j",
+        summary="Malformed compliance row",
+        rows=[{"applicability": "required"}],
+    )
+    task = AgentTask(
+        task_id="compliance-malformed",
+        agent=AgentName.COMPLIANCE,
+        objective="Prepare compliance materials",
+    )
+    result = await ComplianceAgent(StaticEvidenceQuery(malformed)).run(
+        task, _complete_product()
+    )
+    llm = CountingValidationLLM()
+    decision = await ResultValidator(llm).validate(
+        _analysis_request("Prepare compliance materials"),
+        [task],
+        {AgentName.COMPLIANCE.value: result},
+    )
+
+    assert result.status == "failed"
+    assert result.errors == ["compliance_data_incomplete"]
+    assert decision.action != "pass"
+    assert decision.gaps == ["compliance: specialist failed"]
+    assert llm.calls == 0
 
 
 @pytest.mark.asyncio
@@ -486,9 +574,16 @@ async def test_compliance_answer_contains_real_document_groups() -> None:
 
 
 class StaticSupervisor:
-    def __init__(self, agents: list[AgentName], *, market_entry: bool = False) -> None:
+    def __init__(
+        self,
+        agents: list[AgentName],
+        *,
+        market_entry: bool = False,
+        required_fields: list[str] | None = None,
+    ) -> None:
         self.agents = agents
         self.market_entry = market_entry
+        self.required_fields = required_fields or []
         self.calls: list[list[str]] = []
 
     async def plan(
@@ -496,8 +591,12 @@ class StaticSupervisor:
     ) -> SupervisorPlan:
         del request
         self.calls.append(list(gaps or []))
+        tasks = [
+            _task(agent).model_copy(update={"required_fields": self.required_fields})
+            for agent in self.agents
+        ]
         return SupervisorPlan(
-            tasks=[_task(agent) for agent in self.agents],
+            tasks=tasks,
             market_entry_requested=self.market_entry,
         )
 

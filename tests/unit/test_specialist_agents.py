@@ -123,10 +123,8 @@ async def test_all_specialists_share_the_run_contract_and_emit_evidence() -> Non
             {
                 "demand_level": "high",
                 "sample_size": 100,
-                "min_price": 9.99,
-                "max_price": 29.99,
-                "brand_count": 4,
-                "product_count": 10,
+                "prices": ["9.99", "14.99", "19.99", "29.99"],
+                "brands": ["Acme", "Acme", "Nova", "Orbit"],
             }
         ],
     )
@@ -182,6 +180,23 @@ async def test_all_specialists_share_the_run_contract_and_emit_evidence() -> Non
         assert result.status == "success"
         assert result.evidence
     assert results[AgentName.MARKET].data["sample_size"] == 100
+    market_data = results[AgentName.MARKET].data
+    assert market_data["demand_level"] == "high"
+    assert market_data["price_statistics"] == {
+        "min_usd": "9.99",
+        "max_usd": "29.99",
+        "average_usd": "18.74",
+        "median_usd": "17.49",
+        "mainstream_min_usd": "13.74",
+        "mainstream_max_usd": "22.49",
+    }
+    assert market_data["price_band"] == {
+        "min_usd": "13.74",
+        "max_usd": "22.49",
+    }
+    assert market_data["top_brand_share"] == "0.5000"
+    assert market_data["competition_level"] == "concentrated"
+    assert market_data["sample_size"] == 100
     assert results[AgentName.COMPETITOR].data["competitors"][0]["product_id"] == "competitor-1"
     assert results[AgentName.PRICING].evidence[0].source_type == "calculator"
     assert results[AgentName.COMPLIANCE].data["available"] == [
