@@ -6,7 +6,7 @@ import pytest
 
 from app.agents.pricing import PricingAgent
 from app.contracts import AgentName, AgentTask, ProductInput
-from app.services.fee_rule_repository import FeeRule
+from app.services.fee_rule_repository import FeeRule, FeeRuleNotFoundError
 from app.services.pricing_calculator import PricingResult
 
 
@@ -59,6 +59,12 @@ class Calculator:
     def __call__(self, product: ProductInput, fee_rule: FeeRule | None) -> PricingResult:
         self.calls.append((product, fee_rule))
         return self.result
+
+
+class FailingCalculator:
+    def __call__(self, product: ProductInput, fee_rule: FeeRule | None) -> PricingResult:
+        del product, fee_rule
+        raise RuntimeError("internal calculator detail")
 
 
 def _calculation() -> PricingResult:
@@ -141,11 +147,43 @@ async def test_pricing_agent_reports_all_direct_and_rule_lookup_inputs_that_are_
 
 
 @pytest.mark.anyio
+async def test_pricing_agent_only_requests_missing_rule_backed_field_after_rule_is_incomplete(
+) -> None:
+    """Requesting already supplied FX or commission again must fail this test."""
+    product = _product(
+        fx_cny_per_usd=Decimal("7.20"),
+        commission_rate=Decimal("0.12"),
+    )
+    repository = RuleRepository(
+        error=FeeRuleNotFoundError(
+            "internal graph details",
+            ("fx_cny_per_usd", "fba_fee_usd", "commission_rate"),
+        )
+    )
+
+    result = await PricingAgent(repository, Calculator(_calculation())).run(_task(), product)
+
+    assert result.status == "need_input"
+    assert result.missing_fields == ["fba_fee_usd"]
+
+
+@pytest.mark.anyio
 async def test_pricing_agent_returns_failed_when_fee_repository_is_unavailable() -> None:
-    """Converting a repository outage into made-up fees must fail this test."""
+    """Leaking repository implementation details to the user must fail this test."""
     result = await PricingAgent(
         RuleRepository(error=RuntimeError("neo4j unavailable")), Calculator(_calculation())
     ).run(_task(), _product())
 
     assert result.status == "failed"
-    assert result.errors == ["Fee rule lookup failed: neo4j unavailable"]
+    assert result.errors == ["fee_rule_lookup_failed"]
+
+
+@pytest.mark.anyio
+async def test_pricing_agent_returns_stable_error_code_for_calculator_failure() -> None:
+    """Leaking calculator implementation details to the user must fail this test."""
+    result = await PricingAgent(RuleRepository(FeeRule(
+        commission_rate="0.15", fba_fee_usd="2.50", fx_cny_per_usd="7.00"
+    )), FailingCalculator()).run(_task(), _product())
+
+    assert result.status == "failed"
+    assert result.errors == ["pricing_calculation_failed"]

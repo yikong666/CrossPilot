@@ -57,13 +57,16 @@ class PricingAgent:
                     product.category, product.weight_kg
                 )
             except FeeRuleNotFoundError as error:
-                return _need_input([*direct_missing, *error.fields])
-            except Exception as error:
+                missing_rule_fields = [
+                    field for field in error.fields if getattr(product, field) is None
+                ]
+                return _need_input([*direct_missing, *missing_rule_fields])
+            except Exception:
                 return AgentResult(
                     agent=AgentName.PRICING,
                     status="failed",
                     summary="Pricing could not retrieve an applicable fee rule.",
-                    errors=[f"Fee rule lookup failed: {error}"],
+                    errors=["fee_rule_lookup_failed"],
                 )
 
         if direct_missing:
@@ -72,12 +75,12 @@ class PricingAgent:
             calculation = self._calculator(product, fee_rule)
         except MissingPricingFieldsError as error:
             return _need_input(list(error.fields))
-        except Exception as error:
+        except Exception:
             return AgentResult(
                 agent=AgentName.PRICING,
                 status="failed",
                 summary="Pricing calculation failed.",
-                errors=[f"Pricing calculation failed: {error}"],
+                errors=["pricing_calculation_failed"],
             )
 
         payload = calculation.model_dump(mode="json")

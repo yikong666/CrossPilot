@@ -105,10 +105,10 @@ async def test_compliance_agent_fails_for_empty_graph_data() -> None:
 
 @pytest.mark.anyio
 async def test_compliance_agent_fails_for_graph_dependency_error() -> None:
-    """Hiding graph failures behind generic compliance advice must fail this test."""
+    """Leaking graph implementation details to the user must fail this test."""
     result = await ComplianceAgent(QueryService(error=RuntimeError("query failed"))).run(
         _task(), _product()
     )
 
     assert result.status == "failed"
-    assert result.errors == ["Compliance query failed: query failed"]
+    assert result.errors == ["compliance_query_failed"]

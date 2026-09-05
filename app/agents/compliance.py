@@ -33,12 +33,12 @@ class ComplianceAgent:
                 entity_hint=product.category,
                 purpose="compliance",
             )
-        except Exception as error:
+        except Exception:
             return AgentResult(
                 agent=AgentName.COMPLIANCE,
                 status="failed",
                 summary="Compliance preparation could not query approved graph rules.",
-                errors=[f"Compliance query failed: {error}"],
+                errors=["compliance_query_failed"],
             )
 
         if not evidence.rows:
