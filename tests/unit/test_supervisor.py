@@ -143,6 +143,130 @@ async def test_supervisor_does_not_require_realized_outputs_for_target_price_or_
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "question",
+    [
+        "把目标利润率改成30%，重新算建议售价",
+        "What selling price achieves a target margin of 30%?",
+        "What selling price achieves a target gross margin of 30%?",
+    ],
+)
+async def test_supervisor_preserves_model_target_price_requirement_for_target_margin(
+    question: str,
+) -> None:
+    """Target-margin planning must not turn a recommendation into realized economics."""
+    supervisor = Supervisor(
+        FakeStructuredLLM(
+            {
+                "tasks": [
+                    {
+                        "agent": "pricing",
+                        "objective": "Recommend the target price",
+                        "required_fields": ["target_price"],
+                    }
+                ],
+                "market_entry_requested": False,
+            }
+        )
+    )
+
+    plan = await supervisor.plan(_request(question))
+
+    assert plan.tasks[0].required_fields == ["target_price"]
+
+
+@pytest.mark.asyncio
+async def test_supervisor_target_margin_with_actual_cost_does_not_request_current_profit() -> None:
+    """An actual cost is an input assumption, not a request for realized profit or margin."""
+    supervisor = Supervisor(
+        FakeStructuredLLM(
+            {
+                "tasks": [
+                    {
+                        "agent": "pricing",
+                        "objective": "Recommend the target price",
+                        "required_fields": ["target_price"],
+                    }
+                ],
+                "market_entry_requested": False,
+            }
+        )
+    )
+
+    plan = await supervisor.plan(
+        _request("What selling price achieves a target margin from the actual cost?")
+    )
+
+    assert plan.tasks[0].required_fields == ["target_price"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "question",
+    [
+        "把目标利润率改成30%，重新算建议售价",
+        "What selling price achieves a target margin of 30%?",
+        "What selling price achieves a target gross margin of 30%?",
+    ],
+)
+async def test_supervisor_fallback_target_margin_does_not_require_realized_outputs(
+    question: str,
+) -> None:
+    """Fallback routing must preserve a no-current-price target-price calculation."""
+    supervisor = Supervisor(
+        FakeStructuredLLM(
+            {
+                "tasks": [
+                    {
+                        "agent": "market",
+                        "objective": "Assess market",
+                        "required_fields": [],
+                    }
+                ],
+                "market_entry_requested": False,
+            }
+        )
+    )
+
+    plan = await supervisor.plan(_request(question))
+
+    pricing_task = next(task for task in plan.tasks if task.agent is AgentName.PRICING)
+    assert pricing_task.required_fields == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "question",
+    [
+        "请按30%目标利润率建议售价，并计算当前实际利润和利润率",
+        "Calculate a target price and current gross margin",
+    ],
+)
+async def test_supervisor_keeps_target_price_and_adds_realized_outputs_for_mixed_question(
+    question: str,
+) -> None:
+    """A mixed recommendation/current-profit request needs both deterministic output sets."""
+    supervisor = Supervisor(
+        FakeStructuredLLM(
+            {
+                "tasks": [
+                    {
+                        "agent": "pricing",
+                        "objective": "Recommend a price and calculate current economics",
+                        "required_fields": ["target_price"],
+                    }
+                ],
+                "market_entry_requested": False,
+            }
+        )
+    )
+
+    plan = await supervisor.plan(_request(question))
+
+    assert plan.tasks[0].required_fields == ["target_price", "profit", "margin"]
+
+
+@pytest.mark.asyncio
 async def test_supervisor_adds_compliance_fallback_to_model_selected_competitor() -> None:
     supervisor = Supervisor(
         FakeStructuredLLM(
