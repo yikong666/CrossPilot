@@ -148,6 +148,7 @@ async def test_supervisor_does_not_require_realized_outputs_for_target_price_or_
     [
         "把目标利润率改成30%，重新算建议售价",
         "What selling price achieves a target margin of 30%?",
+        "What selling price achieves a target gross margin of 30%?",
     ],
 )
 async def test_supervisor_preserves_model_target_price_requirement_for_target_margin(
@@ -205,6 +206,7 @@ async def test_supervisor_target_margin_with_actual_cost_does_not_request_curren
     [
         "把目标利润率改成30%，重新算建议售价",
         "What selling price achieves a target margin of 30%?",
+        "What selling price achieves a target gross margin of 30%?",
     ],
 )
 async def test_supervisor_fallback_target_margin_does_not_require_realized_outputs(

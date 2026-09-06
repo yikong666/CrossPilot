@@ -59,6 +59,7 @@ _PRICING_TARGET_KEYWORDS = (
     "建议售价",
     "推荐售价",
     "target margin",
+    "target gross margin",
     "target profit",
     "target price",
 )
